@@ -102,7 +102,7 @@ export const DATAVIZ_CSS = `
 }
 @media print{
 :root,[data-theme]{--rk-fill-strong:${pageKitPalette.light.fillStrong};--rk-surface:${pageKitPalette.shared.paper}}
-.rk-tip,.rk-table-filter,.rk-table-more button{display:none}
+.rk-tip,.rk-table-filter,.rk-table-filters,.rk-table-more button{display:none}
 .rk-table-scroll{-webkit-mask-image:none;mask-image:none;max-height:none!important;overflow:visible}
 .rk-draw{animation:none!important;stroke-dasharray:none;stroke-dashoffset:0}
 .rk-heatmap-scroll,.rk-calendar-scroll{overflow:visible}

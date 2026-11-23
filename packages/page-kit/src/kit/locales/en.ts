@@ -24,7 +24,7 @@ export const en = {
   showing: "Showing {shown} of {total}",
   showMore: "Show more",
   filterBy: "Filter by {column}",
-  allOf: "All {column}",
+  allOf: "{column}: all",
   allZero: "All values are 0",
   against: "{x} against {y}",
   againstSized: "{x} against {y}, sized by {size}",

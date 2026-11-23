@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
-import { isValidElement, useCallback, useContext, useState } from "react";
+import { isValidElement, useCallback, useContext, useMemo, useState } from "react";
+import { Select } from "./controls.js";
 import { finite } from "./dataviz.js";
 import { Inline } from "./inline.js";
 import { objectItems } from "./items.js";
@@ -303,6 +304,8 @@ const ALIGNS = new Set(["start", "end", "center"]);
 const LONG_TABLE = 15;
 /** Rows drawn at first; the rest arrive with "Show more" so huge tables stay quick. */
 const PAGE_ROWS = 200;
+/** A column with more distinct values than this is left to the search, not offered as a list. */
+const FILTER_CHOICES_MAX = 200;
 
 function cellText(cell: TableCell): string {
   if (Array.isArray(cell)) return cell.map((item) => cellText(item)).join("");
@@ -402,6 +405,30 @@ export function Table({
   const [sort, setSort] = useState<{ column: number; descending: boolean } | null>(null);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<Record<number, string>>({});
+  // Columns named in `filters` that have a readable heading and a short list of values offer
+  // those values as a choice. Built from the props, so typing in the search does not redo it.
+  const choices = useMemo(() => {
+    const heads = Array.isArray(columns) ? columns : [];
+    const body = (Array.isArray(rows) ? rows : []).filter((row): row is TableCell[] =>
+      Array.isArray(row),
+    );
+    const width = Math.max(heads.length, ...body.map((row) => row.length));
+    const order = new Intl.Collator(words.intl, { numeric: true }).compare;
+    const wanted = new Set(
+      (Array.isArray(filters) ? filters : []).filter(
+        (column) => Number.isInteger(column) && column >= 0 && column < width,
+      ),
+    );
+    return [...wanted].flatMap((column) => {
+      const label = cellText(heads[column] as TableCell).trim();
+      if (!label) return [];
+      const values = [
+        ...new Set(body.map((row) => cellText(row[column]).trim()).filter((value) => value !== "")),
+      ];
+      if (values.length === 0 || values.length > FILTER_CHOICES_MAX) return [];
+      return [{ column, label, values: values.sort(order) }];
+    });
+  }, [columns, rows, filters, words.intl]);
   const [limit, setLimit] = useState(PAGE_ROWS);
   const scroll = useScrollEdges(words.dir);
   if (heads.length === 0 && body.length === 0) return null;
@@ -433,25 +460,6 @@ export function Table({
       : undefined;
   });
   const long = body.length > LONG_TABLE;
-  // Columns named in `filters` that exist and have a heading offer their values as a choice.
-  const filterColumns = [
-    ...new Set(
-      (Array.isArray(filters) ? filters : []).filter(
-        (column) =>
-          Number.isInteger(column) &&
-          column >= 0 &&
-          column < width &&
-          hasColumnHeader(heads[column]),
-      ),
-    ),
-  ];
-  const choices = filterColumns.map((column) => ({
-    column,
-    label: cellText(heads[column] as TableCell).trim(),
-    values: [
-      ...new Set(body.map((row) => cellText(row[column]).trim()).filter((value) => value !== "")),
-    ].sort((a, b) => a.localeCompare(b, words.intl)),
-  }));
   const needle = query.trim().toLowerCase();
   let shown = body.map((row, index) => ({ row, index }));
   if (needle) {
@@ -459,9 +467,13 @@ export function Table({
       row.some((cell) => cellText(cell).toLowerCase().includes(needle)),
     );
   }
-  for (const { column } of choices) {
-    const wanted = picked[column];
-    if (wanted) shown = shown.filter(({ row }) => cellText(row[column]).trim() === wanted);
+  // A choice whose value is gone from the rows no longer filters, so nothing hides unseen.
+  const active = choices.flatMap(({ column, values }) => {
+    const value = picked[column];
+    return value && values.includes(value) ? [{ column, value }] : [];
+  });
+  for (const { column, value } of active) {
+    shown = shown.filter(({ row }) => cellText(row[column]).trim() === value);
   }
   const activeSort = sortable && sort && hasColumnHeader(heads[sort.column]) ? sort : null;
   if (activeSort) {
@@ -510,27 +522,24 @@ export function Table({
       {choices.length > 0 ? (
         <div className="rk-table-filters">
           {choices.map(({ column, label, values }) => (
-            <select
-              key={column}
-              className="rk-table-column-filter"
-              data-column={column}
-              value={picked[column] ?? ""}
-              aria-label={words.t("filterBy", { column: label })}
-              onChange={(event) => {
-                const value = event.currentTarget.value;
-                setPicked((old) => ({ ...old, [column]: value }));
-                setLimit(PAGE_ROWS);
-              }}
-            >
-              <option value="">{words.t("allOf", { column: label })}</option>
-              {values.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
+            <div key={column} className="rk-table-column-filter" data-column={column}>
+              <Select
+                placeholder={words.t("filterBy", { column: label })}
+                value={active.find((choice) => choice.column === column)?.value ?? ""}
+                options={[{ value: "", label: words.t("allOf", { column: label }) }, ...values]}
+                onChange={(value) => {
+                  setPicked((old) => ({ ...old, [column]: value }));
+                  setLimit(PAGE_ROWS);
+                }}
+              />
+            </div>
           ))}
         </div>
+      ) : null}
+      {(needle || active.length > 0) && total <= limit ? (
+        <span className="rk-table-count" role="status">
+          {words.t("showing", { shown: total, total: body.length })}
+        </span>
       ) : null}
       <div className="rk-table-box">
         <div
