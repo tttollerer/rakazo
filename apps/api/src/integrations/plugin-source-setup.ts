@@ -42,6 +42,16 @@ const FREE_MAIL_DOMAINS = new Set([
   "gmx.de",
   "web.de",
   "proton.me",
+  "t-online.de",
+  "posteo.de",
+  "outlook.de",
+  "live.com",
+  "msn.com",
+  "aol.com",
+  "mail.de",
+  "yandex.com",
+  "protonmail.com",
+  "me.com",
 ]);
 
 const ADVICE =

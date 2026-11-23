@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import { ORPCError } from "@orpc/server";
+import type { PluginRepoFetcher } from "@rakazo/adapters";
 import {
   applyMcpSourcePreset,
   createPluginMarketplace,
+  fetchGitHubRepo,
   isTransientFetchError,
   PluginSourceUnreadableError,
   pluginPreviewDto,
@@ -21,8 +23,15 @@ import {
   matchesPluginQuery,
 } from "@rakazo/core";
 import type { Prisma } from "@rakazo/db";
-import { AVAILABILITY_SELECT, availableInSpace, itemSecretIn, spaceAvailability } from "@rakazo/db";
+import {
+  AVAILABILITY_SELECT,
+  availableInSpace,
+  itemSecretIn,
+  recordSecurityEvent,
+  spaceAvailability,
+} from "@rakazo/db";
 import { requireAdmin } from "../auth/admins.js";
+import { pluginSourceReadEvent } from "../auth/security-audit.js";
 import { windowCounter } from "../http/window-counter.js";
 import { searchIntegrationCatalog } from "../integrations/integration-catalog.js";
 import { assertMcpRemoteEndpoint, mayUsePrivateEndpoint } from "../integrations/mcp-servers.js";
@@ -47,6 +56,28 @@ const PLUGIN_LOAD_WINDOW_MS = 10 * 60_000;
 export function capabilitiesRoutes(ctx: RouterContext) {
   const { deps, removeMcpServerInTransaction, authed } = ctx;
   const pluginMarketplace = createPluginMarketplace(deps.pluginMarketplaceRead);
+  /**
+   * The repository fetcher for one procedure. With the operator's token every read is recorded
+   * with its outcome, so probing which private repositories exist leaves a trace; without it
+   * nothing changes.
+   */
+  const pluginFetcher = (actor: Actor, procedure: string): PluginRepoFetcher | undefined => {
+    if (!deps.privatePluginSources) return deps.pluginRepoFetcher;
+    const read = deps.pluginRepoFetcher ?? fetchGitHubRepo;
+    return async (source, signal) => {
+      let outcome: "ok" | "unreadable" | "error" = "error";
+      try {
+        const repo = await read(source, signal);
+        outcome = "ok";
+        return repo;
+      } catch (error) {
+        if (error instanceof PluginSourceUnreadableError) outcome = "unreadable";
+        throw error;
+      } finally {
+        await recordSecurityEvent(pluginSourceReadEvent(actor, procedure, source, outcome));
+      }
+    };
+  };
   // Each preview, install and added part fetches a whole repository. With the operator's token
   // that reads through the operator's account, so it is limited per person; without it, as before.
   const pluginLoads = windowCounter(PLUGIN_LOAD_WINDOW_MS);
@@ -160,7 +191,7 @@ export function capabilitiesRoutes(ctx: RouterContext) {
             {
               prisma: deps.prisma,
               secrets: deps.secrets,
-              fetcher: deps.pluginRepoFetcher,
+              fetcher: pluginFetcher(context.actor, "capabilities.install"),
               assertEndpoint: (endpoint) => assertMcpRemoteEndpoint(endpoint, deps),
             },
             context.actor,
@@ -288,7 +319,7 @@ export function capabilitiesRoutes(ctx: RouterContext) {
           const preview = await previewPluginInstall({
             source: input.source,
             signal: context.signal,
-            fetcher: deps.pluginRepoFetcher,
+            fetcher: pluginFetcher(context.actor, "capabilities.pluginPreview"),
           });
           for (const server of preview.mcpServers) {
             await assertMcpRemoteEndpoint(server.endpoint, deps);
@@ -328,7 +359,7 @@ export function capabilitiesRoutes(ctx: RouterContext) {
           {
             prisma: deps.prisma,
             secrets: deps.secrets,
-            fetcher: deps.pluginRepoFetcher,
+            fetcher: pluginFetcher(context.actor, "capabilities.pluginParts"),
             assertEndpoint: (endpoint) => assertMcpRemoteEndpoint(endpoint, deps),
             removeServer: async (tx, server) =>
               notify.push(...(await removeMcpServerInTransaction(tx, context.actor, server))),

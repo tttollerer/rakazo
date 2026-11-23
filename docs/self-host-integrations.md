@@ -198,9 +198,10 @@ Scope the token to repositories everyone on the server may see. Plugin submissio
 listing are always checked without the token, so a private repository is never approved into it.
 With the token set, previews, installs and added plugin parts are limited to 30 per person in
 ten minutes. Each API process counts on its own, so with several API containers the limit applies
-per container; past 10,000 people active in one window, the rest share one count. Each preview and
-each added part is recorded in the [security events](./self-host-observability.md#security-events)
-with the repository it read. When GitHub rejects the token, the API reads without it for five
+per container; past 10,000 people active in one window, the rest share one count. Each repository
+read for a preview, an install or an added part is recorded in the
+[security events](./self-host-observability.md#security-events) with the repository and whether
+the read worked, the token could not read it, or it failed. When GitHub rejects the token, the API reads without it for five
 minutes before offering it again, and warns once in that time.
 
 ## Messaging apps

@@ -103,28 +103,13 @@ describe("procedureSecurityEvent", () => {
         source: "https://github.com/acme/plugins#tickets@main",
       },
     });
-    expect(procedureSecurityEvent(["capabilities", "pluginPreview"], { source }, actor)).toEqual({
-      type: "plugin_source.read",
-      userId: "user-1",
-      spaceId: "space-1",
-      metadata: {
-        procedure: "capabilities.pluginPreview",
-        source: "https://github.com/acme/plugins#tickets@main",
-      },
-    });
-    // Adding parts to an installed plugin reads its repository again.
+    // Reads are recorded where they happen, with their outcome, not here on success only.
+    expect(procedureSecurityEvent(["capabilities", "pluginPreview"], { source }, actor)).toBe(
+      undefined,
+    );
     expect(
-      procedureSecurityEvent(
-        ["capabilities", "pluginParts"],
-        { id: "inst-1", parts: ["skills"] },
-        actor,
-      ),
-    ).toEqual({
-      type: "plugin_source.read",
-      userId: "user-1",
-      spaceId: "space-1",
-      metadata: { procedure: "capabilities.pluginParts", id: "inst-1" },
-    });
+      procedureSecurityEvent(["capabilities", "pluginParts"], { id: "i", parts: [] }, actor),
+    ).toBe(undefined);
     // Other kinds name an address that may carry a key, so it stays out.
     const api = procedureSecurityEvent(
       ["capabilities", "install"],
@@ -134,11 +119,15 @@ describe("procedureSecurityEvent", () => {
     expect(api?.metadata).toEqual({ procedure: "capabilities.install", kind: "api" });
     // A source the plugin parser refuses is left out rather than stored as typed.
     const odd = procedureSecurityEvent(
-      ["capabilities", "pluginPreview"],
-      { source: "https://user:typed-value@github.com/acme/plugins" },
+      ["capabilities", "install"],
+      { kind: "plugin", source: "https://user:typed-value@github.com/acme/plugins" },
       actor,
     );
-    expect(odd?.metadata).toEqual({ procedure: "capabilities.pluginPreview", source: null });
+    expect(odd?.metadata).toEqual({
+      procedure: "capabilities.install",
+      kind: "plugin",
+      source: null,
+    });
   });
 
   it("ignores procedures that change nothing security-relevant", () => {

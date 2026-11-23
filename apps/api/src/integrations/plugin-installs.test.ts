@@ -449,6 +449,64 @@ describe("plugin RPC boundary", () => {
       rpc.capabilities.pluginParts({ id: "inst-1", parts: ["skills"] }),
     ).rejects.toMatchObject(limited);
   });
+  it("records every repository read with the token, whether it worked or not", async () => {
+    const sink = createTestSink();
+    installLogger(createLogger({ service: "rakazo-api", sinks: [sink] }));
+    const reads = () =>
+      sink.events
+        .filter((event) => event["security.event.type"] === "plugin_source.read")
+        .map((event) => event["security.event.metadata"]);
+    await client(actor, fetcher, true).rpc.capabilities.pluginPreview({ source });
+    const unreadable = client(actor, failingFetcher(new PluginSourceUnreadableError()), true);
+    await unreadable.rpc.capabilities.pluginPreview({ source }).catch(() => undefined);
+    const broken = client(actor, failingFetcher(new Error("Request failed: HTTP 500")), true);
+    await broken.rpc.capabilities
+      .install({ kind: "plugin", ...(await input()) })
+      .catch(() => undefined);
+    expect(reads()).toEqual([
+      { procedure: "capabilities.pluginPreview", source, outcome: "ok" },
+      { procedure: "capabilities.pluginPreview", source, outcome: "unreadable" },
+      { procedure: "capabilities.install", source, outcome: "error" },
+    ]);
+  });
+  it("records the pinned repository an added part is read from", async () => {
+    const sink = createTestSink();
+    installLogger(createLogger({ service: "rakazo-api", sinks: [sink] }));
+    const { rpc, prisma } = client(actor, fetcher, true);
+    prisma.capabilityInstall.findFirst.mockResolvedValue({
+      id: "install-test",
+      spaceId: actor.spaceId,
+      userId: actor.userId,
+      allSpaces: true,
+      availableIn: [],
+      kind: "plugin",
+      source,
+      version: sha,
+      digest: (await input()).pluginDigest,
+      config: { parts: ["skills"] },
+    } as never);
+    await rpc.capabilities
+      .pluginParts({ id: "install-test", parts: ["skills", "connector"] })
+      .catch(() => undefined);
+    expect(
+      sink.events
+        .filter((event) => event["security.event.type"] === "plugin_source.read")
+        .map((event) => event["security.event.metadata"]),
+    ).toEqual([
+      { procedure: "capabilities.pluginParts", source: `${source}@${sha}`, outcome: "ok" },
+    ]);
+  });
+  it("records no repository reads on a server without the token, as before", async () => {
+    const sink = createTestSink();
+    installLogger(createLogger({ service: "rakazo-api", sinks: [sink] }));
+    await client().rpc.capabilities.pluginPreview({ source });
+    await client(actor, failingFetcher(new Error("missing")))
+      .rpc.capabilities.pluginPreview({ source })
+      .catch(() => undefined);
+    expect(sink.events.some((event) => event["security.event.type"] === "plugin_source.read")).toBe(
+      false,
+    );
+  });
   it("does not limit previews on a server without the token, as before", async () => {
     const { rpc } = client();
     for (let n = 0; n < 40; n += 1) await rpc.capabilities.pluginPreview({ source });

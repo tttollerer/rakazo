@@ -66,6 +66,18 @@ describe("plugin source token warning by sign-in setup", () => {
     ["one person's address", { signupAllowlist: "ada@gmail.com" }, false, []],
     ["a free mail domain", { signupAllowlist: "@acme.example, @GMAIL.com" }, true, ["gmail.com"]],
     [
+      "more free mail domains",
+      { signupAllowlist: "@t-online.de,@posteo.de,@outlook.de,@live.com,@msn.com" },
+      true,
+      ["t-online.de", "posteo.de", "outlook.de", "live.com", "msn.com"],
+    ],
+    [
+      "and the rest of them",
+      { signupAllowlist: "@aol.com,@mail.de,@yandex.com,@protonmail.com,@me.com" },
+      true,
+      ["aol.com", "mail.de", "yandex.com", "protonmail.com", "me.com"],
+    ],
+    [
       "two free mail domains",
       { signupAllowlist: "@web.de,@proton.me" },
       true,

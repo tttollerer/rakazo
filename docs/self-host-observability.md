@@ -162,8 +162,9 @@ The API and worker append a row to `security_events` and write a `security.event
 - model, MCP, connector, voice, memory, and secret credentials created, changed, or removed
 - deployment settings changes, approval decisions, and approval policy changes
 - refused private or internal destinations (`egress.refused`) and auth rate-limit hits
-- plugin repositories read for a preview or for adding parts (`plugin_source.read`, with the
-  repository in `metadata.source`; see [plugins from private repositories](./self-host-integrations.md#plugins-from-private-repositories))
+- with `PLUGIN_SOURCE_TOKEN` set, every plugin repository read for a preview, an install or an
+  added part (`plugin_source.read`, with the repository in `metadata.source` and `ok`,
+  `unreadable` or `error` in `metadata.outcome`; see [plugins from private repositories](./self-host-integrations.md#plugins-from-private-repositories))
 
 Each event has the user, space, client address, user agent, time, and a few identifiers. Events
 never include message content, secrets, or tokens. Rows older than `SECURITY_EVENT_RETENTION_DAYS`

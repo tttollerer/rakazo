@@ -28,10 +28,6 @@ export const AUDITED_PROCEDURES: Record<string, AuditedProcedure> = {
   "mcp.oauth.complete": { type: "credential.created", kind: "mcp_oauth" },
   "mcp.oauth.disconnect": { type: "credential.deleted", kind: "mcp_oauth", fields: ["serverId"] },
   "capabilities.install": { type: "credential.created", kind: "connector", fields: ["kind"] },
-  // A preview reads a repository, with the operator's token when one is set.
-  "capabilities.pluginPreview": { type: "plugin_source.read" },
-  // Adding parts to an installed plugin reads its pinned repository again.
-  "capabilities.pluginParts": { type: "plugin_source.read", fields: ["id"] },
   "capabilities.remove": { type: "credential.deleted", kind: "connector", fields: ["id"] },
   "connections.revoke": {
     type: "credential.deleted",
@@ -164,10 +160,7 @@ export function procedureSecurityEvent(
       .sort()
       .join(",");
   }
-  if (
-    procedure === "capabilities.pluginPreview" ||
-    (procedure === "capabilities.install" && fields.kind === "plugin")
-  )
+  if (procedure === "capabilities.install" && fields.kind === "plugin")
     metadata.source = pluginAuditSource(fields.source);
   if (procedure === "mcp.assignments.approve") metadata.decision = "allow";
   if (procedure === "mcp.assignments.dismiss") metadata.decision = "deny";
@@ -219,6 +212,30 @@ async function errorCode(response: Response): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * One repository read with the operator's token, whether it worked (`ok`), the token could not
+ * read it (`unreadable`) or it failed otherwise (`error`). Recorded where the read happens, so a
+ * failed probe leaves a trace too.
+ */
+export function pluginSourceReadEvent(
+  actor: { userId: string; spaceId: string },
+  procedure: string,
+  source: { gitUrl: string; ref?: string; subdir?: string },
+  outcome: "ok" | "unreadable" | "error",
+): SecurityEventInput {
+  const { gitUrl, subdir, ref } = source;
+  return {
+    type: "plugin_source.read",
+    userId: actor.userId,
+    spaceId: actor.spaceId,
+    metadata: {
+      procedure,
+      source: `${gitUrl}${subdir ? `#${subdir}` : ""}${ref ? `@${ref}` : ""}`,
+      outcome,
+    },
+  };
 }
 
 /**
