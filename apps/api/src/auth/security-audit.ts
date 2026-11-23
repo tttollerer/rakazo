@@ -1,3 +1,4 @@
+import { parsePluginSource } from "@rakazo/adapters";
 import type { SecurityEventInput, SecurityEventType } from "@rakazo/db";
 import { recordSecurityEvent } from "@rakazo/db";
 
@@ -27,6 +28,8 @@ export const AUDITED_PROCEDURES: Record<string, AuditedProcedure> = {
   "mcp.oauth.complete": { type: "credential.created", kind: "mcp_oauth" },
   "mcp.oauth.disconnect": { type: "credential.deleted", kind: "mcp_oauth", fields: ["serverId"] },
   "capabilities.install": { type: "credential.created", kind: "connector", fields: ["kind"] },
+  // A preview reads a repository, with the operator's token when one is set.
+  "capabilities.pluginPreview": { type: "plugin_source.read" },
   "capabilities.remove": { type: "credential.deleted", kind: "connector", fields: ["id"] },
   "connections.revoke": {
     type: "credential.deleted",
@@ -159,6 +162,11 @@ export function procedureSecurityEvent(
       .sort()
       .join(",");
   }
+  if (
+    procedure === "capabilities.pluginPreview" ||
+    (procedure === "capabilities.install" && fields.kind === "plugin")
+  )
+    metadata.source = pluginAuditSource(fields.source);
   if (procedure === "mcp.assignments.approve") metadata.decision = "allow";
   if (procedure === "mcp.assignments.dismiss") metadata.decision = "deny";
   return { type: audited.type, userId: actor.userId, spaceId: actor.spaceId, metadata };
@@ -206,6 +214,21 @@ async function errorCode(response: Response): Promise<string | null> {
     const body: unknown = await response.clone().json();
     const code = isRecord(body) ? body.code : undefined;
     return typeof code === "string" && /^[A-Z0-9_]{1,64}$/.test(code) ? code : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A plugin source as the parser reads it: repository, folder and ref, which hold no secret since
+ * the parser refuses credentials, queries and ports. Null when it refuses the source, so nothing
+ * typed is stored as given.
+ */
+function pluginAuditSource(source: unknown): string | null {
+  if (typeof source !== "string") return null;
+  try {
+    const { gitUrl, subdir, ref } = parsePluginSource(source);
+    return `${gitUrl}${subdir ? `#${subdir}` : ""}${ref ? `@${ref}` : ""}`;
   } catch {
     return null;
   }

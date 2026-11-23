@@ -85,6 +85,49 @@ describe("procedureSecurityEvent", () => {
     ).toMatchObject({ type: "approval.decided", metadata: { decision: "deny", kind: "mcp" } });
   });
 
+  it("records which repository a plugin came from, as a plain source and only for plugins", () => {
+    const source = "https://github.com/acme/plugins/tree/main/tickets";
+    expect(
+      procedureSecurityEvent(
+        ["capabilities", "install"],
+        { kind: "plugin", source, name: "Tickets", config: { token: "typed-value" } },
+        actor,
+      ),
+    ).toEqual({
+      type: "credential.created",
+      userId: "user-1",
+      spaceId: "space-1",
+      metadata: {
+        procedure: "capabilities.install",
+        kind: "plugin",
+        source: "https://github.com/acme/plugins#tickets@main",
+      },
+    });
+    expect(procedureSecurityEvent(["capabilities", "pluginPreview"], { source }, actor)).toEqual({
+      type: "plugin_source.read",
+      userId: "user-1",
+      spaceId: "space-1",
+      metadata: {
+        procedure: "capabilities.pluginPreview",
+        source: "https://github.com/acme/plugins#tickets@main",
+      },
+    });
+    // Other kinds name an address that may carry a key, so it stays out.
+    const api = procedureSecurityEvent(
+      ["capabilities", "install"],
+      { kind: "api", source: "https://api.example.test/openapi.json?key=typed-value" },
+      actor,
+    );
+    expect(api?.metadata).toEqual({ procedure: "capabilities.install", kind: "api" });
+    // A source the plugin parser refuses is left out rather than stored as typed.
+    const odd = procedureSecurityEvent(
+      ["capabilities", "pluginPreview"],
+      { source: "https://user:typed-value@github.com/acme/plugins" },
+      actor,
+    );
+    expect(odd?.metadata).toEqual({ procedure: "capabilities.pluginPreview", source: null });
+  });
+
   it("ignores procedures that change nothing security-relevant", () => {
     expect(procedureSecurityEvent(["threads", "send"], { text: "hello" }, actor)).toBeUndefined();
   });

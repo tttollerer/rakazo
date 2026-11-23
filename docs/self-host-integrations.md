@@ -179,12 +179,25 @@ ones, set `PLUGIN_SOURCE_TOKEN` on the API to a fine-grained GitHub token with r
 
 The token stays on the server. It is sent only over HTTPS to `api.github.com` and
 `raw.githubusercontent.com`, never after a redirect to another host, and it does not appear in
-logs, errors, previews or stored sources. A repository the server cannot read is reported as
-missing or private.
+logs, errors, previews or stored sources. It is used for public repositories too. A repository
+the server cannot read is reported as missing or private. When GitHub rejects the token, for
+example once it expires, the API logs `PLUGIN_SOURCE_TOKEN rejected by GitHub` and reads without
+it, so public repositories keep installing.
 
-Every signed-in person on the server can install from any repository the token can read, so
-scope it to repositories everyone may use. Plugin submissions to the shared listing are always
-checked without the token, so a private repository is never approved into it.
+Who can read through the token:
+
+- Every signed-in person on the server can preview and install from any repository the token can
+  read. There is no separate permission for it.
+- With open sign-up, that includes anyone who creates an account. The API warns about this at
+  startup. Set `SIGNUPS_ENABLED=false`, a `SIGNUP_ALLOWLIST`, or single sign-on so only your
+  people have accounts.
+- Installing copies the plugin's content into the person's Space, including any static headers
+  its `mcp.json` sets. Treat everything in those repositories as visible to everyone on the server.
+
+Scope the token to repositories everyone on the server may see. Plugin submissions to the shared
+listing are always checked without the token, so a private repository is never approved into it.
+Previews and installs are limited per person, and each preview is recorded in the security log
+with the repository it read.
 
 ## Messaging apps
 

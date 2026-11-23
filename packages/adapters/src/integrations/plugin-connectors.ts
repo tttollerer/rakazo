@@ -220,6 +220,8 @@ export async function fetchGitHubRepo(
   ref: PluginSourceRef,
   signal?: AbortSignal,
   read: PluginTextReader = readPublicText,
+  /** Read with the operator's token: a repository it cannot read gets its own answer. */
+  withToken = false,
 ): ReturnType<PluginRepoFetcher> {
   const url = new URL(ref.gitUrl);
   if (url.hostname !== "github.com")
@@ -231,7 +233,7 @@ export async function fetchGitHubRepo(
       `https://api.github.com/repos${repo}/commits/${encodeURIComponent(ref.ref ?? "HEAD")}`,
       512_000,
       deadline,
-    ).catch(unreadableWhenMissing),
+    ).catch((error) => (withToken ? unreadableWhenMissing(error) : Promise.reject(error))),
   ) as { sha?: string; commit?: { tree?: { sha?: string } } };
   const sha = commit.sha;
   if (!sha || !FULL_SHA.test(sha)) throw new Error("Could not resolve plugin commit SHA");

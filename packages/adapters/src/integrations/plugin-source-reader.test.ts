@@ -1,5 +1,6 @@
 import { inspect } from "node:util";
 import { ClientError } from "@rakazo/core";
+import { createLogger, createTestSink, installLogger } from "@rakazo/logging";
 import { describe, expect, it, vi } from "vitest";
 import { fetchGitHubRepo } from "./plugin-connectors.js";
 import {
@@ -24,6 +25,12 @@ function web(respond: (url: URL) => Response = () => new Response("ok")) {
     seen,
     read: githubTokenReader(TOKEN, { fetch, resolveHostname: publicResolver }),
   };
+}
+
+/** The fetcher installs get with the token, over a web that answers as `respond` says. */
+function tokenFetcher(respond: (url: URL) => Response) {
+  const fetch: typeof globalThis.fetch = async (input) => respond(new URL(String(input)));
+  return pluginRepoFetcherFor(TOKEN, { fetch, resolveHostname: publicResolver })!;
 }
 
 /** Every way an error can end up in a log or an answer. */
@@ -116,26 +123,80 @@ describe("plugin sources read with the operator's token", () => {
     }
   });
 
-  it("says a repository the server cannot read is missing or private, with a stable code", async () => {
-    const { read } = web(() => new Response("Not Found", { status: 404 }));
-    const error = await fetchGitHubRepo(
-      { gitUrl: "https://github.com/acme/private" },
-      undefined,
-      read,
-    ).catch((e) => e);
-    expect(error).toBeInstanceOf(PluginSourceUnreadableError);
-    expect(error).toBeInstanceOf(ClientError);
-    expect(error).toMatchObject({
+  it("says a repository the token cannot read is missing or private, with a stable code", async () => {
+    const answer = {
       kind: "NOT_FOUND",
       code: "PLUGIN_SOURCE_UNREADABLE",
       message: "This repository was not found. If it is private, the server needs access to it.",
-    });
-    for (const text of everyRendering(error)) expect(text).not.toContain(TOKEN);
+    };
+    // GitHub answers 404 for a missing or hidden repository and 422 for a ref it cannot find;
+    // both get one answer, so the token never tells which private repositories exist.
+    for (const status of [404, 422]) {
+      const fetcher = tokenFetcher(() => new Response("missing", { status }));
+      const error = await fetcher({ gitUrl: "https://github.com/acme/private" }).catch((e) => e);
+      expect(error).toBeInstanceOf(PluginSourceUnreadableError);
+      expect(error).toBeInstanceOf(ClientError);
+      expect(error).toMatchObject(answer);
+      for (const text of everyRendering(error)) expect(text).not.toContain(TOKEN);
+    }
     // Any other failure keeps its own meaning.
-    const broken = web(() => new Response("broken", { status: 500 })).read;
     await expect(
-      fetchGitHubRepo({ gitUrl: "https://github.com/acme/private" }, undefined, broken),
+      tokenFetcher(() => new Response("broken", { status: 500 }))({
+        gitUrl: "https://github.com/acme/private",
+      }),
     ).rejects.not.toBeInstanceOf(PluginSourceUnreadableError);
+  });
+
+  it("answers a missing repository without a token exactly as before", async () => {
+    // The public reader's failure for a missing repository, unchanged.
+    const read = async () => {
+      throw new Error("Request failed: HTTP 404");
+    };
+    const error = await fetchGitHubRepo(
+      { gitUrl: "https://github.com/acme/missing" },
+      undefined,
+      read,
+    ).catch((e) => e);
+    expect(error).not.toBeInstanceOf(ClientError);
+    expect(error).toMatchObject({ message: "Request failed: HTTP 404" });
+  });
+
+  it("reads again without a token GitHub rejects, warning once without its value", async () => {
+    const sink = createTestSink();
+    installLogger(createLogger({ service: "rakazo-api", sinks: [sink] }));
+    const commit = { sha: "a".repeat(40), commit: { tree: { sha: "b".repeat(40) } } };
+    // An expired token: GitHub refuses it even for a public repository.
+    const seen: (string | null)[] = [];
+    const rejecting = githubTokenReader(TOKEN, {
+      fetch: async (_input, init) => {
+        const authorization = new Headers(init?.headers).get("authorization");
+        seen.push(authorization);
+        return authorization
+          ? new Response("Bad credentials", { status: 401 })
+          : new Response(JSON.stringify(commit));
+      },
+      resolveHostname: publicResolver,
+    });
+    // Public: the read without the token succeeds.
+    const body = await rejecting("https://api.github.com/repos/a/b/commits/HEAD", 1000);
+    expect(JSON.parse(body)).toEqual(commit);
+    expect(seen).toEqual([`Bearer ${TOKEN}`, null]);
+    const warnings = sink.events.filter((event) => event.level === "warn");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]!.message).toBe("PLUGIN_SOURCE_TOKEN rejected by GitHub");
+    expect(inspect(sink.events, { depth: 10 })).not.toContain(TOKEN);
+    // Private: without the token it is missing, which is the missing-or-private answer.
+    const fetcher = pluginRepoFetcherFor(TOKEN, {
+      fetch: async (_input, init) =>
+        new Headers(init?.headers).get("authorization")
+          ? new Response("Bad credentials", { status: 401 })
+          : new Response("missing", { status: 404 }),
+      resolveHostname: publicResolver,
+    })!;
+    await expect(fetcher({ gitUrl: "https://github.com/acme/private" })).rejects.toBeInstanceOf(
+      PluginSourceUnreadableError,
+    );
+    expect(inspect(sink.events, { depth: 10 })).not.toContain(TOKEN);
   });
 
   it("leaves the public reader in place when no token is set", () => {

@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { getLogger } from "@rakazo/logging";
 import type { SafeWebFetchOptions } from "../web/web-ssrf.js";
 import { fetchSafeWebText } from "../web/web-ssrf.js";
 import type { PluginRepoFetcher, PluginTextReader } from "./plugin-connectors.js";
@@ -22,8 +23,10 @@ function carriesToken(error: unknown, token: string): boolean {
 /**
  * Reads plugin sources with the operator's read-only token, so private repositories it can read
  * install like public ones. The token goes only over https to GitHub's API and raw file host on
- * their default port; the safe web fetch drops it when a redirect leaves that origin. A failure
- * that somehow names the token is replaced by one that does not.
+ * their default port; the safe web fetch drops it when a redirect leaves that origin. When GitHub
+ * rejects the token (expired or revoked), the read is tried once more without it, so public
+ * repositories keep working. A failure that somehow names the token is replaced by one that
+ * does not.
  */
 export function githubTokenReader(
   token: string,
@@ -33,14 +36,22 @@ export function githubTokenReader(
     const target = new URL(url);
     const trusted =
       target.protocol === "https:" && target.port === "" && TOKEN_HOSTS.has(target.hostname);
-    try {
-      const response = await fetchSafeWebText(url, {
+    const fetch = (withToken: boolean) =>
+      fetchSafeWebText(url, {
         ...options,
         maxBytes,
         signal,
-        headers: trusted ? { authorization: `Bearer ${token}` } : undefined,
+        headers: withToken ? { authorization: `Bearer ${token}` } : undefined,
       });
-      return response.body;
+    try {
+      try {
+        return (await fetch(trusted)).body;
+      } catch (error) {
+        if (!trusted || !(error instanceof Error) || error.message !== "Request failed: HTTP 401")
+          throw error;
+        getLogger().warn("PLUGIN_SOURCE_TOKEN rejected by GitHub");
+        return (await fetch(false)).body;
+      }
     } catch (error) {
       if (carriesToken(error, token)) throw new Error("Plugin source request failed");
       throw error;
@@ -49,8 +60,11 @@ export function githubTokenReader(
 }
 
 /** The repository fetcher for a configured token; without one the public reader stays. */
-export function pluginRepoFetcherFor(token: string | undefined): PluginRepoFetcher | undefined {
+export function pluginRepoFetcherFor(
+  token: string | undefined,
+  options: Pick<SafeWebFetchOptions, "fetch" | "resolveHostname"> = {},
+): PluginRepoFetcher | undefined {
   if (!token) return undefined;
-  const read = githubTokenReader(token);
-  return (source, signal) => fetchGitHubRepo(source, signal, read);
+  const read = githubTokenReader(token, options);
+  return (source, signal) => fetchGitHubRepo(source, signal, read, true);
 }

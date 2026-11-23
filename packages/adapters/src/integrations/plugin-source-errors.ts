@@ -15,9 +15,12 @@ export class PluginSourceUnreadableError extends ClientError {
   }
 }
 
-/** Turns the safe web fetch's 404 into the missing-or-private answer; any other failure stays. */
+/**
+ * Turns the safe web fetch's 404 and 422 for a commit into the missing-or-private answer, so a
+ * token never tells which private repositories or refs exist; any other failure stays.
+ */
 export function unreadableWhenMissing(error: unknown): never {
-  if (error instanceof Error && error.message === "Request failed: HTTP 404")
+  if (error instanceof Error && /^Request failed: HTTP (404|422)$/.test(error.message))
     throw new PluginSourceUnreadableError();
   throw error;
 }

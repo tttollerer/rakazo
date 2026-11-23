@@ -1,5 +1,6 @@
 import { createRouterClient } from "@orpc/server";
 import type { PluginRepoFetcher } from "@rakazo/adapters";
+import { PluginSourceUnreadableError } from "@rakazo/adapters";
 import type { Actor } from "@rakazo/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type { RouterDeps } from "../router.js";
@@ -89,6 +90,17 @@ describe("marketplace RPC", () => {
     const [entry] = (await client(actor).marketplace.catalog({ query: "notes" })).entries;
     const preview = await client(actor).capabilities.pluginPreview({ source: entry!.source });
     expect(preview.builtinNames).toEqual(["Interrogate"]);
+    const after = await client(actor).marketplace.catalog({ query: "notes" });
+    expect(after.entries.map((row) => row.source)).toContain(entry!.source);
+  });
+  it("keeps listing a plugin the operator's token could not read", async () => {
+    const { client } = setup([], async () => {
+      throw new PluginSourceUnreadableError();
+    });
+    const [entry] = (await client(actor).marketplace.catalog({ query: "notes" })).entries;
+    await expect(
+      client(actor).capabilities.pluginPreview({ source: entry!.source }),
+    ).rejects.toMatchObject({ code: "PLUGIN_SOURCE_UNREADABLE" });
     const after = await client(actor).marketplace.catalog({ query: "notes" });
     expect(after.entries.map((row) => row.source)).toContain(entry!.source);
   });

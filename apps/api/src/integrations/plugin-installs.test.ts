@@ -1,8 +1,11 @@
 import { createRouterClient } from "@orpc/server";
 import type { SecretStore } from "@rakazo/adapter-kit";
+import type { PluginRepoFetcher } from "@rakazo/adapters";
 import {
   BUILTIN_AGENT_SKILLS,
+  fetchGitHubRepo,
   PluginSourceUnreadableError,
+  pluginRepoFetcherFor,
   previewPluginInstall,
 } from "@rakazo/adapters";
 import type { Actor } from "@rakazo/contracts";
@@ -339,7 +342,10 @@ describe("confirmed plugin installation", () => {
 });
 
 describe("plugin RPC boundary", () => {
-  function client(currentActor: Actor | null = actor, pluginRepoFetcher = fetcher) {
+  function client(
+    currentActor: Actor | null = actor,
+    pluginRepoFetcher: PluginRepoFetcher = fetcher,
+  ) {
     const { deps, prisma } = setup();
     const router = createRouter({
       prisma: deps.prisma,
@@ -386,6 +392,51 @@ describe("plugin RPC boundary", () => {
     await expect(
       failing.rpc.capabilities.install({ kind: "plugin", ...(await input()) }),
     ).rejects.toMatchObject(answer);
+  });
+  it("answers a missing repository without a token as it always did", async () => {
+    // The public reader's 404, through the real repository fetch.
+    const missing = client(actor, (ref, signal) =>
+      fetchGitHubRepo(ref, signal, async () => {
+        throw new Error("Request failed: HTTP 404");
+      }),
+    );
+    await expect(missing.rpc.capabilities.pluginPreview({ source })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+      message: "Could not preview a supported plugin from this repository",
+    });
+  });
+  it("logs no part of the operator's token, whatever the repository fetch hits", async () => {
+    const token = "test-token-not-real";
+    const sink = createTestSink();
+    installLogger(createLogger({ service: "rakazo-api", sinks: [sink] }));
+    const answers = [
+      () => new Response("missing", { status: 404 }),
+      () => new Response("broken", { status: 500 }),
+      () => new Response("Bad credentials", { status: 401 }),
+      () => {
+        throw new TypeError(`fetch failed with Bearer ${token}`, { cause: new Error(token) });
+      },
+    ];
+    for (const answer of answers) {
+      const withToken = pluginRepoFetcherFor(token, {
+        fetch: async () => answer(),
+        resolveHostname: async () => [{ address: "203.0.113.10", family: 4 }],
+      })!;
+      const { rpc } = client(actor, withToken);
+      await rpc.capabilities.pluginPreview({ source }).catch(() => undefined);
+      await rpc.capabilities.install({ kind: "plugin", ...(await input()) }).catch(() => undefined);
+    }
+    expect(sink.events.length).toBeGreaterThan(0);
+    expect(JSON.stringify(sink.events)).not.toContain(token);
+  });
+  it("limits how many plugins one person previews and installs in a while", async () => {
+    const { rpc } = client();
+    for (let n = 0; n < 30; n += 1) await rpc.capabilities.pluginPreview({ source });
+    const limited = { kind: "TOO_MANY_REQUESTS", code: "PLUGIN_LOADS_LIMITED" };
+    await expect(rpc.capabilities.pluginPreview({ source })).rejects.toMatchObject(limited);
+    await expect(
+      rpc.capabilities.install({ kind: "plugin", ...(await input()) }),
+    ).rejects.toMatchObject(limited);
   });
   it("lets a fault in the loader fail the preview as a server error", async () => {
     const fault = client(actor, failingFetcher(new TypeError("Cannot read properties of null")));

@@ -36,6 +36,7 @@ export const SECURITY_EVENT_TYPES = [
   "organization.invitation.sent",
   "egress.refused",
   "rate_limit.hit",
+  "plugin_source.read",
 ] as const;
 
 export const SecurityEventTypeSchema = z.enum(SECURITY_EVENT_TYPES);

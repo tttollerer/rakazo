@@ -23,6 +23,7 @@ import {
 import type { Prisma } from "@rakazo/db";
 import { AVAILABILITY_SELECT, availableInSpace, itemSecretIn, spaceAvailability } from "@rakazo/db";
 import { requireAdmin } from "../auth/admins.js";
+import { windowCounter } from "../http/window-counter.js";
 import { searchIntegrationCatalog } from "../integrations/integration-catalog.js";
 import { assertMcpRemoteEndpoint, mayUsePrivateEndpoint } from "../integrations/mcp-servers.js";
 import {
@@ -39,9 +40,23 @@ import {
 } from "../integrations/plugin-submissions.js";
 import type { RouterContext } from "./context.js";
 
+/** Plugin previews and installs one person may start in a window; each fetches a repository. */
+const PLUGIN_LOADS_PER_WINDOW = 30;
+const PLUGIN_LOAD_WINDOW_MS = 10 * 60_000;
+
 export function capabilitiesRoutes(ctx: RouterContext) {
   const { deps, removeMcpServerInTransaction, authed } = ctx;
   const pluginMarketplace = createPluginMarketplace(deps.pluginMarketplaceRead);
+  // Each preview and install fetches a whole repository, with the operator's token when set.
+  const pluginLoads = windowCounter(PLUGIN_LOAD_WINDOW_MS);
+  const limitPluginLoads = (actor: Actor) => {
+    if (pluginLoads(`user:${actor.userId}`) > PLUGIN_LOADS_PER_WINDOW)
+      throw new ClientError(
+        "TOO_MANY_REQUESTS",
+        "Too many plugin previews and installs. Try again in a few minutes.",
+        "PLUGIN_LOADS_LIMITED",
+      );
+  };
   /** Removes an install and, for a plugin, the servers, secrets and skills it added. */
   const removeInstall = async (actor: Actor, id: string) => {
     const notify: Array<{ threadId: string; seq: number }> = [];
@@ -138,6 +153,7 @@ export function capabilitiesRoutes(ctx: RouterContext) {
       }),
       install: authed.capabilities.install.handler(async ({ context, input }) => {
         if (input.kind === "plugin") {
+          limitPluginLoads(context.actor);
           return installPlugin(
             {
               prisma: deps.prisma,
@@ -265,6 +281,7 @@ export function capabilitiesRoutes(ctx: RouterContext) {
         };
       }),
       pluginPreview: authed.capabilities.pluginPreview.handler(async ({ context, input }) => {
+        limitPluginLoads(context.actor);
         try {
           const preview = await previewPluginInstall({
             source: input.source,
@@ -288,9 +305,10 @@ export function capabilitiesRoutes(ctx: RouterContext) {
           if (!(error instanceof ConnectionSetupError))
             rethrowUnlessPluginSourceFailed(error, context.signal);
           // Only content we can't support leaves browse; a slow or failing host is retried.
-          if (!isTransientFetchError(error)) pluginMarketplace.markUnreadable(input.source);
-          // Missing or private says what to change, unlike the general refusal.
+          // Missing or private says what to change, unlike the general refusal. It may be the
+          // operator's token that cannot read it, so browse keeps listing the plugin.
           if (error instanceof PluginSourceUnreadableError) throw error;
+          if (!isTransientFetchError(error)) pluginMarketplace.markUnreadable(input.source);
           throw new ClientError(
             "BAD_REQUEST",
             "Could not preview a supported plugin from this repository",
