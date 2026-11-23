@@ -6,6 +6,9 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { PageFrame } from "./PageFrame";
 
+const artifacts = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock("../../lib/query/rpc", () => ({ rpc: { artifacts } }));
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -157,5 +160,85 @@ it("acts for a page only in an interactive frame, right after the person used th
   await send({ type: "rakazo-page:open-link", url: "https://example.com/x", gesture: "k:next" });
   expect(opened).toHaveBeenCalledTimes(1);
   expect(document.body.textContent).toContain("example.com/x");
+  await act(async () => root.unmount());
+});
+
+it("sends a page the attached files its reader may open, without a click, and nothing else", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const files: Record<string, { mimeType: string; contentBase64: string }> = {
+    photo: { mimeType: "image/jpeg", contentBase64: btoa("jpeg") },
+    page: { mimeType: "text/html", contentBase64: btoa("<p>x</p>") },
+  };
+  artifacts.get.mockImplementation(async ({ artifactId }: { artifactId: string }) => {
+    const file = files[artifactId];
+    if (!file) throw new Error("NOT_FOUND");
+    return file;
+  });
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  const container = document.body.appendChild(document.createElement("div"));
+  const root = createRoot(container);
+  const render = (media?: { botId: string }) =>
+    act(async () => root.render(<PageFrame document="<p>x</p>" title="Board" media={media} />));
+  await render({ botId: "bot-1" });
+  const frame = container.querySelector("iframe")!;
+  const answers = vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
+  const ask = (ref: string, source: Window | null = frame.contentWindow) =>
+    act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", { data: { type: "rakazo-page:media", id: ref, ref }, source }),
+      );
+      await vi.waitFor(() => expect(answers.mock.calls.length).toBeGreaterThan(0));
+      await flush();
+    });
+  const answered = () => {
+    // The overload the frame uses passes the target origin and the buffers it hands over.
+    const calls = (answers.mock.calls as unknown[][]).map(([message, , transfer]) => ({
+      message,
+      transfer,
+    }));
+    answers.mockClear();
+    return calls;
+  };
+
+  await ask("photo");
+  const [sent] = answered();
+  expect(artifacts.get).toHaveBeenLastCalledWith({ botId: "bot-1", artifactId: "photo" });
+  const message = sent!.message as { mime: string; buffer: ArrayBuffer };
+  expect(message).toMatchObject({ type: "rakazo-page:media-data", id: "photo", ref: "photo" });
+  expect(message.mime).toBe("image/jpeg");
+  expect(new TextDecoder().decode(message.buffer)).toBe("jpeg");
+  expect(sent!.transfer).toEqual([message.buffer]);
+
+  // A file that is no picture, sound or video, or one the reader may not open, is refused.
+  await ask("page");
+  await ask("someone-elses");
+  expect(answered().map(({ message }) => message)).toEqual([
+    { type: "rakazo-page:media-data", id: "page", ref: "page", error: "unavailable" },
+    {
+      type: "rakazo-page:media-data",
+      id: "someone-elses",
+      ref: "someone-elses",
+      error: "unavailable",
+    },
+  ]);
+
+  // Another window cannot ask in the page's name.
+  artifacts.get.mockClear();
+  window.dispatchEvent(
+    new MessageEvent("message", {
+      data: { type: "rakazo-page:media", id: "x", ref: "photo" },
+      source: window,
+    }),
+  );
+  await act(flush);
+  expect(artifacts.get).not.toHaveBeenCalled();
+
+  // A frame that names no bot or group, as on a shared page, loads nothing.
+  await render(undefined);
+  await ask("photo");
+  expect(artifacts.get).not.toHaveBeenCalled();
+  expect(answered().map(({ message }) => message)).toEqual([
+    { type: "rakazo-page:media-data", id: "photo", ref: "photo", error: "unavailable" },
+  ]);
   await act(async () => root.unmount());
 });

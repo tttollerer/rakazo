@@ -1,10 +1,18 @@
 import { useExternalLinkOpener } from "@rakazo/chat-ui/web";
 import type { PageSectionAnchor } from "@rakazo/contracts";
-import { pageCopyRequest, pageCopyResult, pageLinkRequest, pageReviewSections } from "@rakazo/core";
+import {
+  pageCopyRequest,
+  pageCopyResult,
+  pageLinkRequest,
+  pageMediaRequest,
+  pageReviewSections,
+} from "@rakazo/core";
 import type { CSSProperties } from "react";
 import { useCallback, useRef, useState } from "react";
 import { writeClipboard } from "../../lib/copy-text";
+import type { ArtifactTarget } from "../../lib/pages/artifact-open";
 import { pageFrameHeight } from "../../lib/pages/page-cards";
+import { pageMediaAnswer } from "../../lib/pages/page-media";
 import { SandboxedHtmlViewer } from "../messages/SandboxedHtmlViewer";
 
 /**
@@ -14,6 +22,8 @@ import { SandboxedHtmlViewer } from "../messages/SandboxedHtmlViewer";
  * has not been used for another action yet. Previews draw only.
  * An interactive frame prints whole: on paper it keeps the width the page was drawn at, so the
  * page's last reported height still fits it, and the browser scales it to the paper.
+ * Files the page shows from the bot's attachments load with the reader's own access, only where
+ * the frame names the bot or group whose files they are; elsewhere they stay placeholders.
  */
 export function PageFrame({
   document,
@@ -22,6 +32,7 @@ export function PageFrame({
   onHeight,
   onReply,
   onSections,
+  media,
 }: {
   document: string;
   title: string;
@@ -30,13 +41,19 @@ export function PageFrame({
   /** Where a page's reply button puts its text; without it the page offers no replies. */
   onReply?: (text: unknown) => void;
   onSections?: (sections: PageSectionAnchor[]) => void;
+  /** Whose attached files the page may show. */
+  media?: ArtifactTarget;
 }) {
   const { open, dialog } = useExternalLinkOpener();
   const box = useRef<HTMLDivElement>(null);
   const [drawnAt, setDrawnAt] = useState<CSSProperties | undefined>(undefined);
   const usedGesture = useRef<string | null>(null);
   const receive = useCallback(
-    (data: unknown, answer: (message: object) => void, focused: boolean) => {
+    (
+      data: unknown,
+      answer: (message: object, transfer?: Transferable[]) => void,
+      focused: boolean,
+    ) => {
       if (!data || typeof data !== "object") return;
       const message = data as {
         type?: unknown;
@@ -55,6 +72,14 @@ export function PageFrame({
         onHeight?.(height);
         return;
       }
+      // Showing a file needs no click, unlike the actions below.
+      const file = pageMediaRequest(data);
+      if (file) {
+        void pageMediaAnswer(media, file).then(({ message, transfer }) =>
+          answer(message, transfer),
+        );
+        return;
+      }
       const sections = onSections && pageReviewSections(data);
       if (sections) onSections(sections);
       const { gesture } = message;
@@ -69,7 +94,7 @@ export function PageFrame({
       else if (url) open(url);
       else if (reply) reply(message.text);
     },
-    [interactive, onHeight, onReply, onSections, open],
+    [interactive, media, onHeight, onReply, onSections, open],
   );
   return (
     <>

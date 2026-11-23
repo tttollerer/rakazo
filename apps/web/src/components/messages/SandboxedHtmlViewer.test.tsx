@@ -83,7 +83,8 @@ it("keeps the nested preview opaque and blocks remote images, media and fonts", 
   expect(preview).toContain('sandbox="allow-scripts"');
   expect(preview).toContain('referrerpolicy="no-referrer"');
   expect(preview).toContain(`csp="${PREVIEW_CSP}"`);
-  expect(PREVIEW_CSP).toContain("img-src data:");
+  // Pictures come embedded, or as blobs the page makes from files the app sent it.
+  expect(PREVIEW_CSP).toContain("img-src data: blob:;");
   expect(PREVIEW_CSP).toContain("font-src data:");
   expect(PREVIEW_CSP).not.toMatch(/img-src[^;]*https:/);
   expect(PREVIEW_CSP).not.toMatch(/font-src[^;]*https:/);
@@ -92,7 +93,7 @@ it("keeps the nested preview opaque and blocks remote images, media and fonts", 
   // The srcdoc also inherits the shell's own policy, so embedded pictures and media need it there.
   const shellPolicy =
     shell.match(/http-equiv="Content-Security-Policy" content="([^"]*)"/)?.[1] ?? "";
-  expect(shellPolicy).toContain("img-src data:;");
+  expect(shellPolicy).toContain("img-src data: blob:;");
   expect(shellPolicy).toContain("media-src data: blob:;");
   expect(shellPolicy).not.toMatch(/https?:/);
   expect(shell).not.toContain("allow-same-origin");
@@ -194,6 +195,53 @@ it("vouches for one click or key the guard saw, never a forged, stale or inactiv
   ]);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+it("passes file requests up and only pictures, sound or video of attachment size down", () => {
+  const script = shell.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  if (!script) throw new Error("shell script missing");
+  const down: unknown[][] = [];
+  const preview = {
+    srcdoc: "",
+    contentWindow: { postMessage: (...args: unknown[]) => down.push(args) },
+  };
+  const up: unknown[] = [];
+  const parent = { postMessage: (message: unknown) => up.push(message) };
+  let listener: ((event: { source: unknown; data: unknown }) => void) | undefined;
+  new Function("addEventListener", "parent", "window", "document", script)(
+    (_type: string, handler: typeof listener) => {
+      listener = handler;
+    },
+    parent,
+    {},
+    { getElementById: () => preview },
+  );
+  const page = (data: object) => listener?.({ source: preview.contentWindow, data });
+  const app = (data: object, source: unknown = parent) => listener?.({ source, data });
+
+  page({ type: "rakazo-page:media", id: "m1", ref: "photo", extra: "dropped" });
+  page({ type: "rakazo-page:media", id: "m2", ref: "../secret" });
+  page({ type: "rakazo-page:media", id: "x".repeat(65), ref: "photo" });
+  expect(up).toEqual([{ type: "rakazo-page:media", id: "m1", ref: "photo" }]);
+
+  const buffer = new ArrayBuffer(4);
+  const answer = { type: "rakazo-page:media-data", id: "m1", ref: "photo" };
+  app({ ...answer, mime: "image/png", buffer });
+  app({ ...answer, mime: "text/html", buffer: new ArrayBuffer(4) });
+  app({ ...answer, mime: "video/mp4", buffer: new ArrayBuffer(10 * 1024 * 1024 + 1) });
+  app({ ...answer, mime: "image/png", buffer: "not bytes" });
+  app({ ...answer, error: "anything the app says" });
+  // Only the app speaks for the files it sends.
+  app({ ...answer, mime: "image/png", buffer: new ArrayBuffer(1) }, {});
+  const refused = [{ ...answer, error: "unavailable" }, "*"];
+  expect(down).toEqual([
+    [{ ...answer, mime: "image/png", buffer }, "*", [buffer]],
+    refused,
+    refused,
+    refused,
+    refused,
+  ]);
+  expect(preview.srcdoc).toBe("");
 });
 
 it("lets the shell load the nested srcdoc preview and rejects http(s) navigations", () => {

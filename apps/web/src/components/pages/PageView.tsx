@@ -7,6 +7,7 @@ import { cn, Dialog, DialogClose, DialogContent, DialogTitle } from "@rakazo/ui-
 import { Pencil, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useRef, useState } from "react";
+import type { ArtifactTarget } from "../../lib/pages/artifact-open";
 import {
   DARWIN_WINDOW_CONTROLS_WIDTH_PX,
   desktopBridge,
@@ -38,6 +39,7 @@ export function PageView({
   returnFocus,
   compact = false,
   notice = null,
+  media,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -57,6 +59,8 @@ export function PageView({
   compact?: boolean;
   /** Said in place of the page when it could not be opened. */
   notice?: ReactNode;
+  /** Whose attached files the page may show. */
+  media?: ArtifactTarget;
 }) {
   const { t } = useLingui();
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -201,6 +205,7 @@ export function PageView({
                       onReply={onReply}
                       onSections={onSections}
                       onHeight={onDrawn}
+                      media={media}
                     />
                   </div>
                 ) : null}

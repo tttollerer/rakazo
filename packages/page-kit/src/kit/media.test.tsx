@@ -235,6 +235,106 @@ describe("media", () => {
   });
 });
 
+describe("attachments", () => {
+  let made: Blob[];
+  let revoked: string[];
+  beforeEach(() => {
+    made = [];
+    revoked = [];
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      made.push(blob);
+      return `blob:null/${made.length}`;
+    });
+    URL.revokeObjectURL = vi.fn((url: string) => {
+      revoked.push(url);
+    });
+  });
+  const requests = () => posted as { type: string; id: string; ref: string }[];
+  const answer = (data: object) =>
+    act(() => {
+      window.dispatchEvent(new MessageEvent("message", { data }));
+    });
+  const bytes = (request: { id: string; ref: string }, mime: string) =>
+    answer({ ...request, type: "rakazo-page:media-data", mime, buffer: new ArrayBuffer(4) });
+
+  it("asks the app once for an attached picture and shows it as a blob once it arrives", () => {
+    const root = createRoot(host.appendChild(document.createElement("div")));
+    act(() =>
+      root.render(
+        <>
+          <Image src="attachment:cm1photo" alt="Harbour" />
+          <Gallery photos={[{ src: "attachment:cm1photo", alt: "Harbour" }]} />
+        </>,
+      ),
+    );
+    expect(requests()).toEqual([
+      { type: "rakazo-page:media", id: expect.any(String), ref: "cm1photo" },
+    ]);
+    // Until then its shape and its name hold the place.
+    expect(q("img")).toBeNull();
+    expect(all('[role="img"][aria-busy]')).toHaveLength(2);
+    expect(q(".rk-media-missing")!.textContent).toBe("Harbour");
+    // An answer for another file or request is not this one.
+    answer({
+      ...requests()[0],
+      type: "rakazo-page:media-data",
+      ref: "other",
+      mime: "image/png",
+      buffer: new ArrayBuffer(1),
+    });
+    expect(made).toHaveLength(0);
+    bytes(requests()[0]!, "image/jpeg");
+    expect(made.map((blob) => blob.type)).toEqual(["image/jpeg"]);
+    expect(all("img").map((img) => img.getAttribute("src"))).toEqual([
+      "blob:null/1",
+      "blob:null/1",
+    ]);
+    act(() => root.unmount());
+    expect(revoked).toEqual(["blob:null/1"]);
+  });
+
+  it("keeps the placeholder where the app refuses, sends no picture, or never answers", () => {
+    vi.useFakeTimers();
+    render(
+      <>
+        <Image src="attachment:refused" alt="Refused" />
+        <Image src="attachment:sound" alt="Not a picture" />
+        <Image src="attachment:silent" alt="Silent" />
+        <Image src="attachment:../x" alt="Bad id" />
+      </>,
+    );
+    const [refused, sound] = requests();
+    expect(requests().map((request) => request.ref)).toEqual(["refused", "sound", "silent"]);
+    answer({ ...refused, type: "rakazo-page:media-data", error: "unavailable" });
+    bytes(sound!, "audio/mpeg");
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(q("img")).toBeNull();
+    expect(all(".rk-media-missing").map((node) => node.textContent)).toEqual([
+      "Refused",
+      "Not a picture",
+      "Silent",
+    ]);
+    expect(q("[aria-busy]")).toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("plays attached sound and video from the bytes the app sends", () => {
+    render(
+      <>
+        <Video src="attachment:clip" alt="Clip" />
+        <Audio src="attachment:tone" alt="Tone" />
+      </>,
+    );
+    expect(q("video, audio")).toBeNull();
+    expect(all(".rk-media-missing").map((node) => node.textContent)).toEqual(["Clip", "Tone"]);
+    const [clip, tone] = requests();
+    bytes(clip!, "video/mp4");
+    bytes(tone!, "audio/mpeg");
+    expect(q("video")!.getAttribute("src")).toBe("blob:null/1");
+    expect(q("audio")!.getAttribute("src")).toBe("blob:null/2");
+  });
+});
+
 describe("cards and people", () => {
   const item = {
     title: "Linen shirt",

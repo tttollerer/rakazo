@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useEventListener } from "../../lib/use-event-listener";
 
 export const PREVIEW_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'";
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'";
 
 const PREVIEW_GUARD = `<script>
 document.addEventListener("click", (event) => {
@@ -38,10 +38,15 @@ export function SandboxedHtmlViewer({
   title: string;
   className?: string;
   /**
-   * Messages the shown document sends up through the viewer shell; `answer` posts back down, and
-   * `focused` says whether this frame holds the app's focus as the message arrives.
+   * Messages the shown document sends up through the viewer shell; `answer` posts back down,
+   * handing over any `transfer` buffers, and `focused` says whether this frame holds the app's
+   * focus as the message arrives.
    */
-  onFrameMessage?: (data: unknown, answer: (message: object) => void, focused: boolean) => void;
+  onFrameMessage?: (
+    data: unknown,
+    answer: (message: object, transfer?: Transferable[]) => void,
+    focused: boolean,
+  ) => void;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   // Every shell load starts empty, so each one gets the document again.
@@ -55,7 +60,10 @@ export function SandboxedHtmlViewer({
     if (event.source !== frame.current?.contentWindow) return;
     onFrameMessage?.(
       event.data,
-      (message) => frame.current?.contentWindow?.postMessage(message, "*"),
+      (message, transfer) =>
+        transfer
+          ? frame.current?.contentWindow?.postMessage(message, "*", transfer)
+          : frame.current?.contentWindow?.postMessage(message, "*"),
       document.activeElement === frame.current,
     );
   });

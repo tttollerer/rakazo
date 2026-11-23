@@ -4,8 +4,9 @@ import { pageReviewPath } from "@rakazo/contracts";
 import { Button } from "@rakazo/ui-web";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import type { ArtifactTarget } from "../../lib/pages/artifact-open";
 import type { PageSession } from "../../lib/pages/pages";
 import { PAGE_PARAM, useMedia, usePageDocument, usePageSession } from "../../lib/pages/pages";
 import { useSave, useSpaceQueries } from "../../lib/query/query";
@@ -121,6 +122,13 @@ function OpenPage({
     [session],
   );
   const data = page.data;
+  const botId = data?.botId;
+  const groupId = data?.groupId;
+  // The page shows its bot's or group's attached files, which the reader's own access loads.
+  const media = useMemo<ArtifactTarget | undefined>(
+    () => (botId ? { botId } : groupId ? { groupId } : undefined),
+    [botId, groupId],
+  );
   const open = pageId !== null && (data !== undefined || failed || page.isPending);
   const dockPage = pageId !== null && data ? { id: data.id, title: data.title } : null;
   useEffect(() => {
@@ -137,6 +145,7 @@ function OpenPage({
       document={viewer.document}
       returnFocus={session.restoreFocus}
       compact={compact}
+      media={media}
       notice={
         gone ? (
           <PageNotice

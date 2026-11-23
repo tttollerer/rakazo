@@ -86,7 +86,7 @@ Keep each control's value in useState. A control placed straight in a Section or
 - ReplyButton {label, reply?}: puts reply (or the label), up to 300 characters, in the chat's message box for the reader to send. It is inactive where there is no chat, such as a shared page.
 
 ### Media
-Pictures, sound and video must be embedded as data: URIs (a blob: the page makes itself also works for sound and video); web addresses never load and the component is left out.
+Pictures, sound and video must be embedded as data: URIs (a blob: the page makes itself also works for sound and video), or be a file you attached with attach_file, given as src="attachment:<artifactId>" from its result; use that for photos and video too large to embed. The app shows an attached file only to readers who may open it, so a shared page shows its name in its place. Web addresses never load and the component is left out.
 - Image {src, alt, caption?, fit?: "cover" | "contain", width?, height?, ratio?: number | "16/9"}: click to enlarge.
 - Gallery {photos: [{src, alt}], height?}: up to 8 photos the reader swipes or steps through.
 - PhotoStrip {items: [{image, alt?, title?, price?, note?, href?}], tileWidth?, imageHeight?}: a sideways row of small cards.

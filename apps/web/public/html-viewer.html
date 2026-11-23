@@ -1,6 +1,7 @@
-<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; frame-src about:; child-src 'none'; form-action 'none'; base-uri 'none'"><meta name="referrer" content="no-referrer"><style>html,body{height:100%;margin:0;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0;background:transparent}</style><iframe id="preview" title="Preview" sandbox="allow-scripts" referrerpolicy="no-referrer" csp="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'"></iframe><script>
+<!DOCTYPE html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; frame-src about:; child-src 'none'; form-action 'none'; base-uri 'none'"><meta name="referrer" content="no-referrer"><style>html,body{height:100%;margin:0;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0;background:transparent}</style><iframe id="preview" title="Preview" sandbox="allow-scripts" referrerpolicy="no-referrer" csp="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'"></iframe><script>
 // Loaded from the network (not srcdoc) so the app's CSP is not inherited. The srcdoc inherits this
-// policy too, so it allows the same embedded pictures and media as the preview's. frame-src about: allows
+// policy too, so it allows the same embedded pictures and media as the preview's, and the blobs a
+// page makes from the files the app sends it. frame-src about: allows
 // the nested srcdoc and rejects navigations the sandbox and inner CSP do not block.
 // Each document the shell shows gets a fresh key. Only the guard placed first in the document knows
 // it: the guard removes its own script before the page's run and keeps the key in a closure, so a
@@ -17,7 +18,7 @@ function guard() {
 }
 addEventListener("message", (event) => {
   const preview = document.getElementById("preview");
-  // A page asks the app to open a link, offer a reply, copy text or make room for its height; only those pass up.
+  // A page asks the app to open a link, offer a reply, copy text, show an attached file or make room for its height; only those pass up.
   if (event.source === preview.contentWindow && parent !== window) {
     const data = event.data;
     // A click or key in the page also activates this shell, which the page cannot fake; the guard
@@ -37,6 +38,10 @@ addEventListener("message", (event) => {
       parent.postMessage({ type: data.type, text: data.text.slice(0, 300), gesture: fresh }, "*");
     } else if (data && data.type === "rakazo-page:copy" && typeof data.id === "string" && typeof data.text === "string") {
       parent.postMessage({ type: data.type, id: data.id, text: data.text, gesture: fresh }, "*");
+    } else if (data && data.type === "rakazo-page:media" && typeof data.id === "string" && data.id.length <= 64 &&
+      typeof data.ref === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(data.ref)) {
+      // Showing a file takes no click: the app loads it only with the reader's own access.
+      parent.postMessage({ type: data.type, id: data.id, ref: data.ref }, "*");
     } else if (data && data.type === "rakazo-page:height" && Number.isFinite(data.height)) {
       parent.postMessage({ type: data.type, height: data.height }, "*");
     } else if (data && data.type === "rakazo-page:sections" && Array.isArray(data.sections)) {
@@ -58,6 +63,17 @@ addEventListener("message", (event) => {
   // The app's answer to a copy: only whether it worked comes back down, never clipboard contents.
   if (event.data && event.data.type === "rakazo-page:copied") {
     preview.contentWindow.postMessage({ type: event.data.type, id: String(event.data.id), ok: event.data.ok === true }, "*");
+    return;
+  }
+  // The app's answer to a file request: a picture, sound or video no larger than an attachment may
+  // be, handed over without a copy; anything else tells the page it has no file to show.
+  const answer = event.data;
+  if (answer && answer.type === "rakazo-page:media-data" && typeof answer.id === "string" && typeof answer.ref === "string") {
+    const media = typeof answer.mime === "string" && /^(image|video|audio)\/[a-z0-9.+-]+$/i.test(answer.mime) &&
+      Object.prototype.toString.call(answer.buffer) === "[object ArrayBuffer]" && answer.buffer.byteLength <= 10485760;
+    const reply = { type: answer.type, id: answer.id, ref: answer.ref };
+    if (media) preview.contentWindow.postMessage({ ...reply, mime: answer.mime, buffer: answer.buffer }, "*", [answer.buffer]);
+    else preview.contentWindow.postMessage({ ...reply, error: "unavailable" }, "*");
     return;
   }
   if (typeof event.data !== "string") return;

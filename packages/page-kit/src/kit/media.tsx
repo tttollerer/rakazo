@@ -6,23 +6,16 @@ import { graphemes } from "./graphemes.js";
 import { openViaHost } from "./inline.js";
 import type { Words } from "./labels.js";
 import { useWords } from "./labels.js";
+import {
+  attachmentRef,
+  imageSource,
+  MediaPlaceholder,
+  mediaSource,
+  useAttachment,
+} from "./media-source.js";
 
 const text = (value: unknown) =>
   typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
-
-/** The viewer loads nothing from the network, so pictures come embedded in the page. */
-function imageSource(value: unknown): string | undefined {
-  return typeof value === "string" && /^data:image\/[a-z0-9.+-]+[;,]/i.test(value)
-    ? value
-    : undefined;
-}
-
-/** Sound and video may also be a blob the page made itself. */
-function mediaSource(value: unknown, kind: "audio" | "video"): string | undefined {
-  if (typeof value !== "string") return undefined;
-  if (value.startsWith("blob:")) return value;
-  return new RegExp(`^data:${kind}/[a-z0-9.+-]+[;,]`, "i").test(value) ? value : undefined;
-}
 
 /** 1.5, "16/9" or "4:3" as width over height; anything else leaves the picture's own shape. */
 export function aspectRatio(value: unknown): number | undefined {
@@ -46,7 +39,12 @@ type PictureProps = {
 
 /** A soft fill shows until the current picture has drawn, then it fades in. */
 function Picture(props: PictureProps) {
-  return <PictureSource key={props.src} {...props} />;
+  const shown = useAttachment(props.src, "image");
+  return shown.src ? (
+    <PictureSource key={shown.src} {...props} src={shown.src} />
+  ) : (
+    <MediaPlaceholder alt={props.alt} waiting={shown.waiting} style={props.style} />
+  );
 }
 
 function PictureSource({ src, alt, fit, style }: PictureProps) {
@@ -103,27 +101,30 @@ export function Image({
 }) {
   const words = useWords();
   const source = imageSource(src);
+  const shown = useAttachment(source, "image");
   const [zoomed, setZoomed] = useState(false);
   if (!source) return null;
   const style = boxStyle({ width, height, ratio });
   const name = text(alt);
+  const box = { height: style.height, aspectRatio: style.aspectRatio };
   return (
     <figure className="rk-figure" style={{ maxWidth: style.maxWidth }}>
-      <button
-        type="button"
-        className="rk-zoom"
-        aria-label={name ? words.t("enlarge", { name }) : words.t("enlargeImage")}
-        onClick={() => setZoomed(true)}
-      >
-        <Picture
-          src={source}
-          alt={name}
-          fit={fit}
-          style={{ height: style.height, aspectRatio: style.aspectRatio }}
-        />
-      </button>
+      {shown.src ? (
+        <button
+          type="button"
+          className="rk-zoom"
+          aria-label={name ? words.t("enlarge", { name }) : words.t("enlargeImage")}
+          onClick={() => setZoomed(true)}
+        >
+          <Picture src={shown.src} alt={name} fit={fit} style={box} />
+        </button>
+      ) : (
+        <MediaPlaceholder alt={name || words.t("image")} waiting={shown.waiting} style={box} />
+      )}
       <Caption>{text(caption)}</Caption>
-      {zoomed ? <Lightbox src={source} alt={name} onClose={() => setZoomed(false)} /> : null}
+      {zoomed && shown.src ? (
+        <Lightbox src={shown.src} alt={name} onClose={() => setZoomed(false)} />
+      ) : null}
     </figure>
   );
 }
@@ -199,6 +200,8 @@ export function Video({
 }) {
   const source = mediaSource(src, "video");
   const still = imageSource(poster);
+  const shown = useAttachment(source, "video");
+  const cover = useAttachment(still, "image").src;
   const [failed, setFailed] = useState<string | undefined>(undefined);
   if (!source && !still) return null;
   const style = boxStyle({ width, height, ratio: ratio ?? (height ? undefined : 16 / 9) });
@@ -208,14 +211,14 @@ export function Video({
   const play = autoplay !== false && !reduced;
   return (
     <figure className="rk-figure" style={{ maxWidth: style.maxWidth }}>
-      {source && failed !== source ? (
+      {shown.src && failed !== shown.src ? (
         <div
           className="rk-picture"
           style={{ height: style.height, aspectRatio: style.aspectRatio }}
         >
           <video
-            src={source}
-            poster={still}
+            src={shown.src}
+            poster={cover}
             aria-label={text(alt) || undefined}
             autoPlay={play}
             muted={play}
@@ -224,9 +227,15 @@ export function Video({
             playsInline
             preload="metadata"
             data-fit={fit === "cover" ? "cover" : undefined}
-            onError={() => setFailed(source)}
+            onError={() => setFailed(shown.src)}
           />
         </div>
+      ) : !cover && attachmentRef(source) ? (
+        <MediaPlaceholder
+          alt={text(alt)}
+          waiting={shown.waiting}
+          style={{ height: style.height, aspectRatio: style.aspectRatio }}
+        />
       ) : (
         <div
           className="rk-picture"
@@ -234,7 +243,7 @@ export function Video({
           aria-label={text(alt) || undefined}
           style={{ height: style.height, aspectRatio: style.aspectRatio }}
         >
-          {still ? <img src={still} alt="" aria-hidden="true" /> : null}
+          {cover ? <img src={cover} alt="" aria-hidden="true" /> : null}
         </div>
       )}
       <Caption>{text(caption)}</Caption>
@@ -256,18 +265,23 @@ export function Audio({
   width?: number;
 }) {
   const source = mediaSource(src, "audio");
+  const shown = useAttachment(source, "audio");
   if (!source) return null;
   return (
     <figure className="rk-figure" style={{ maxWidth: px(width) }}>
-      {/* biome-ignore lint/a11y/useMediaCaption: a page's sound clip has no caption track to offer. */}
-      <audio
-        className="rk-audio"
-        src={source}
-        aria-label={text(alt) || undefined}
-        controls
-        loop={loop === true}
-        preload="metadata"
-      />
+      {shown.src ? (
+        // biome-ignore lint/a11y/useMediaCaption: a page's sound clip has no caption track to offer.
+        <audio
+          className="rk-audio"
+          src={shown.src}
+          aria-label={text(alt) || undefined}
+          controls
+          loop={loop === true}
+          preload="metadata"
+        />
+      ) : (
+        <MediaPlaceholder alt={text(alt)} waiting={shown.waiting} />
+      )}
       <Caption>{text(caption)}</Caption>
     </figure>
   );

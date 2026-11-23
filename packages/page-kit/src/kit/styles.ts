@@ -9,6 +9,7 @@ import { CALENDAR_CSS } from "./calendar.js";
 import { CONTROLS_CSS } from "./controls.js";
 import { DATAVIZ_CSS } from "./dataviz-styles.js";
 import { MEDIA_CSS } from "./media.js";
+import { ATTACHMENT_CSS } from "./media-source.js";
 import { TEXT_KIT_CSS } from "./text.js";
 
 // Print is always light: paper has no dark mode, and shadows print as grey smudges.
@@ -230,4 +231,4 @@ const RHYTHM_CSS = `
 .rk-section>.rk-section-head+.rk-section-fold:not([data-open]){margin-top:0}
 `;
 
-export const PAGE_STYLES = `${renderTokensCss()}\n${KIT_CSS}\n${TEXT_KIT_CSS}\n${DATAVIZ_CSS}\n${CONTROLS_CSS}\n${MEDIA_CSS}\n${CALENDAR_CSS}\n${RHYTHM_CSS}`;
+export const PAGE_STYLES = `${renderTokensCss()}\n${KIT_CSS}\n${TEXT_KIT_CSS}\n${DATAVIZ_CSS}\n${CONTROLS_CSS}\n${MEDIA_CSS}\n${ATTACHMENT_CSS}\n${CALENDAR_CSS}\n${RHYTHM_CSS}`;

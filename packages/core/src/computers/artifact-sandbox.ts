@@ -1,10 +1,10 @@
 import type { PageSectionAnchor } from "@rakazo/contracts";
-import { PageSectionOccurrence } from "@rakazo/contracts";
+import { ATTACHMENT_MAX_BYTES, PageSectionOccurrence } from "@rakazo/contracts";
 
 // Same policy as the web preview: nothing loads from the network, so a script
 // cannot send what it reads to a remote image or font URL.
 export const SANDBOXED_ARTIFACT_CSP =
-  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'";
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; media-src data: blob:; font-src data:; form-action 'none'; base-uri 'none'";
 
 const PLAIN_HTML_DOCTYPE = /^\s*<!doctype\s+html\s*>/i;
 
@@ -117,6 +117,26 @@ export function pageLinkRequest(data: unknown): string | null {
 /** The answer a page's copy button waits for. */
 export function pageCopyResult(id: string, ok: boolean) {
   return { type: "rakazo-page:copied", id, ok };
+}
+
+/**
+ * A file the bot attached that a page asks to show, named as `attachment:<id>` in its source.
+ * The app loads it with the reader's own access, so a page can never show what they cannot open.
+ */
+export function pageMediaRequest(data: unknown): { id: string; artifactId: string } | null {
+  if (!data || typeof data !== "object") return null;
+  const { type, id, ref } = data as { type?: unknown; id?: unknown; ref?: unknown };
+  if (type !== "rakazo-page:media" || typeof id !== "string" || typeof ref !== "string")
+    return null;
+  if (id.length === 0 || id.length > 64) return null;
+  return /^[A-Za-z0-9_-]{1,64}$/.test(ref) ? { id, artifactId: ref } : null;
+}
+
+/** Whether a file may go into a page as its picture, sound or video. */
+export function pageMediaAllowed(file: { mimeType: string; size: number }): boolean {
+  return (
+    /^(image|video|audio)\/[a-z0-9.+-]+$/i.test(file.mimeType) && file.size <= ATTACHMENT_MAX_BYTES
+  );
 }
 
 /** Untrusted labels from the shown frame, used only as choices in the host's comment form. */

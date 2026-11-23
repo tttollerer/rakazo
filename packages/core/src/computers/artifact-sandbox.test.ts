@@ -34,7 +34,8 @@ describe("withSandboxedArtifactCsp", () => {
   });
 
   it("allows no network loads, only inline and data content", () => {
-    expect(SANDBOXED_ARTIFACT_CSP).toContain("img-src data:;");
+    // Pictures may also be blobs the page made, as from files the app sent it.
+    expect(SANDBOXED_ARTIFACT_CSP).toContain("img-src data: blob:;");
     expect(SANDBOXED_ARTIFACT_CSP).toContain("font-src data:;");
     expect(SANDBOXED_ARTIFACT_CSP).toContain("form-action 'none'");
     // A page's own sound or video plays from embedded data or a blob it made, never a URL.
