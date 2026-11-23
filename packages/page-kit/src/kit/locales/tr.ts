@@ -21,6 +21,8 @@ export const tr: Messages = {
   noRowsMatch: "Eşleşen satır yok.",
   showing: "{total} satırdan {shown} tanesi gösteriliyor",
   showMore: "Daha fazla göster",
+  filterBy: "{column} ölçütüne göre filtrele",
+  allOf: "{column}: tümü",
   allZero: "Tüm değerler 0",
   against: "{x} ile {y}",
   againstSized: "{x} ile {y}, boyut {size} değerine göre",

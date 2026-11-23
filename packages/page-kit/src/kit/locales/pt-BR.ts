@@ -21,6 +21,8 @@ export const ptBR: Messages = {
   noRowsMatch: "Nenhuma linha corresponde.",
   showing: "Mostrando {shown} de {total}",
   showMore: "Mostrar mais",
+  filterBy: "Filtrar por {column}",
+  allOf: "{column}: todos",
   allZero: "Todos os valores são 0",
   against: "{x} em relação a {y}",
   againstSized: "{x} em relação a {y}, tamanho por {size}",

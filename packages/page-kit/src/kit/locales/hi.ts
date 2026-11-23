@@ -21,6 +21,8 @@ export const hi: Messages = {
   noRowsMatch: "कोई पंक्ति मेल नहीं खाती।",
   showing: "{total} में से {shown} दिखाई जा रही हैं",
   showMore: "और दिखाएँ",
+  filterBy: "{column} के अनुसार फ़िल्टर करें",
+  allOf: "{column}: सभी",
   allZero: "सभी मान 0 हैं",
   against: "{x} बनाम {y}",
   againstSized: "{x} बनाम {y}, आकार {size} के अनुसार",

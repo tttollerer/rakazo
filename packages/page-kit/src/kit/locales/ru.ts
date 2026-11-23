@@ -21,6 +21,8 @@ export const ru: Messages = {
   noRowsMatch: "Нет подходящих строк.",
   showing: "Показано {shown} из {total}",
   showMore: "Показать ещё",
+  filterBy: "Фильтр по столбцу «{column}»",
+  allOf: "{column}: все",
   allZero: "Все значения равны 0",
   against: "{x} относительно {y}",
   againstSized: "{x} относительно {y}, размер по {size}",

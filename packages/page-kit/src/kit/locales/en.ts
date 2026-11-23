@@ -23,6 +23,8 @@ export const en = {
   noRowsMatch: "No rows match.",
   showing: "Showing {shown} of {total}",
   showMore: "Show more",
+  filterBy: "Filter by {column}",
+  allOf: "All {column}",
   allZero: "All values are 0",
   against: "{x} against {y}",
   againstSized: "{x} against {y}, sized by {size}",

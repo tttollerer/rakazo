@@ -21,6 +21,8 @@ export const zhTW: Messages = {
   noRowsMatch: "沒有符合的列。",
   showing: "顯示 {shown} / {total}",
   showMore: "顯示更多",
+  filterBy: "依{column}篩選",
+  allOf: "{column}：全部",
   allZero: "所有數值皆為 0",
   against: "{x} 對比 {y}",
   againstSized: "{x} 對比 {y}，大小表示 {size}",

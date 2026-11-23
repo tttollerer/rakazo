@@ -21,6 +21,8 @@ export const ja: Messages = {
   noRowsMatch: "一致する行はありません。",
   showing: "{total} 件中 {shown} 件を表示",
   showMore: "さらに表示",
+  filterBy: "{column}で絞り込む",
+  allOf: "{column}: すべて",
   allZero: "すべての値が 0 です",
   against: "{x} 対 {y}",
   againstSized: "{x} 対 {y}、サイズは {size}",

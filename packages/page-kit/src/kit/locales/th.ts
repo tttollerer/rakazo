@@ -21,6 +21,8 @@ export const th: Messages = {
   noRowsMatch: "ไม่มีแถวที่ตรงกัน",
   showing: "แสดง {shown} จาก {total}",
   showMore: "แสดงเพิ่ม",
+  filterBy: "กรองตาม {column}",
+  allOf: "{column}: ทั้งหมด",
   allZero: "ค่าทั้งหมดเป็น 0",
   against: "{x} เทียบกับ {y}",
   againstSized: "{x} เทียบกับ {y} ขนาดตาม {size}",

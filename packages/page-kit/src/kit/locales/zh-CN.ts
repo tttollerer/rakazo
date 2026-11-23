@@ -21,6 +21,8 @@ export const zhCN: Messages = {
   noRowsMatch: "没有匹配的行。",
   showing: "显示 {shown} / {total}",
   showMore: "显示更多",
+  filterBy: "按{column}筛选",
+  allOf: "{column}：全部",
   allZero: "所有数值均为 0",
   against: "{x} 对比 {y}",
   againstSized: "{x} 对比 {y}，大小表示 {size}",

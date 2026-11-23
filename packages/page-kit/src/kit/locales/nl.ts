@@ -21,6 +21,8 @@ export const nl: Messages = {
   noRowsMatch: "Geen overeenkomende rijen.",
   showing: "{shown} van {total} getoond",
   showMore: "Meer tonen",
+  filterBy: "Filteren op {column}",
+  allOf: "{column}: alle",
   allZero: "Alle waarden zijn 0",
   against: "{x} tegen {y}",
   againstSized: "{x} tegen {y}, grootte volgens {size}",

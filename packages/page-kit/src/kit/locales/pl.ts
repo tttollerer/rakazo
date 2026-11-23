@@ -21,6 +21,8 @@ export const pl: Messages = {
   noRowsMatch: "Brak pasujących wierszy.",
   showing: "Wyświetlono {shown} z {total}",
   showMore: "Pokaż więcej",
+  filterBy: "Filtruj według: {column}",
+  allOf: "{column}: wszystkie",
   allZero: "Wszystkie wartości wynoszą 0",
   against: "{x} względem {y}",
   againstSized: "{x} względem {y}, rozmiar według {size}",

@@ -21,6 +21,8 @@ export const es: Messages = {
   noRowsMatch: "Ninguna fila coincide.",
   showing: "Mostrando {shown} de {total}",
   showMore: "Mostrar más",
+  filterBy: "Filtrar por {column}",
+  allOf: "{column}: todos",
   allZero: "Todos los valores son 0",
   against: "{x} frente a {y}",
   againstSized: "{x} frente a {y}, tamaño según {size}",

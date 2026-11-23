@@ -21,6 +21,8 @@ export const he: Messages = {
   noRowsMatch: "אין שורות תואמות.",
   showing: "מוצגות {shown} מתוך {total}",
   showMore: "הצגת עוד",
+  filterBy: "סינון לפי {column}",
+  allOf: "{column}: הכול",
   allZero: "כל הערכים הם 0",
   against: "{x} מול {y}",
   againstSized: "{x} מול {y}, גודל לפי {size}",

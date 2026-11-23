@@ -383,12 +383,16 @@ export function Table({
   align,
   emphasis,
   sortable = false,
+  searchable = false,
+  filters,
 }: {
   columns?: ReactNode[];
   rows?: TableCell[][];
   align?: Align[];
   emphasis?: number;
   sortable?: boolean;
+  searchable?: boolean;
+  filters?: number[];
 }) {
   const words = useWords();
   const heads = Array.isArray(columns) ? columns : [];
@@ -397,6 +401,7 @@ export function Table({
   );
   const [sort, setSort] = useState<{ column: number; descending: boolean } | null>(null);
   const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<Record<number, string>>({});
   const [limit, setLimit] = useState(PAGE_ROWS);
   const scroll = useScrollEdges(words.dir);
   if (heads.length === 0 && body.length === 0) return null;
@@ -428,12 +433,35 @@ export function Table({
       : undefined;
   });
   const long = body.length > LONG_TABLE;
+  // Columns named in `filters` that exist and have a heading offer their values as a choice.
+  const filterColumns = [
+    ...new Set(
+      (Array.isArray(filters) ? filters : []).filter(
+        (column) =>
+          Number.isInteger(column) &&
+          column >= 0 &&
+          column < width &&
+          hasColumnHeader(heads[column]),
+      ),
+    ),
+  ];
+  const choices = filterColumns.map((column) => ({
+    column,
+    label: cellText(heads[column] as TableCell).trim(),
+    values: [
+      ...new Set(body.map((row) => cellText(row[column]).trim()).filter((value) => value !== "")),
+    ].sort((a, b) => a.localeCompare(b, words.intl)),
+  }));
   const needle = query.trim().toLowerCase();
   let shown = body.map((row, index) => ({ row, index }));
   if (needle) {
     shown = shown.filter(({ row }) =>
       row.some((cell) => cellText(cell).toLowerCase().includes(needle)),
     );
+  }
+  for (const { column } of choices) {
+    const wanted = picked[column];
+    if (wanted) shown = shown.filter(({ row }) => cellText(row[column]).trim() === wanted);
   }
   const activeSort = sortable && sort && hasColumnHeader(heads[sort.column]) ? sort : null;
   if (activeSort) {
@@ -466,7 +494,7 @@ export function Table({
     );
   return (
     <div className="rk-table-wrap">
-      {long || query ? (
+      {long || query || searchable ? (
         <input
           className="rk-table-filter"
           type="search"
@@ -478,6 +506,31 @@ export function Table({
             setLimit(PAGE_ROWS);
           }}
         />
+      ) : null}
+      {choices.length > 0 ? (
+        <div className="rk-table-filters">
+          {choices.map(({ column, label, values }) => (
+            <select
+              key={column}
+              className="rk-table-column-filter"
+              data-column={column}
+              value={picked[column] ?? ""}
+              aria-label={words.t("filterBy", { column: label })}
+              onChange={(event) => {
+                const value = event.currentTarget.value;
+                setPicked((old) => ({ ...old, [column]: value }));
+                setLimit(PAGE_ROWS);
+              }}
+            >
+              <option value="">{words.t("allOf", { column: label })}</option>
+              {values.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          ))}
+        </div>
       ) : null}
       <div className="rk-table-box">
         <div

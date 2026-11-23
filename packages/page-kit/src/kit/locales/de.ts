@@ -22,6 +22,8 @@ export const de: Messages = {
   noRowsMatch: "Keine passenden Zeilen.",
   showing: "{shown} von {total} angezeigt",
   showMore: "Mehr anzeigen",
+  filterBy: "Nach {column} filtern",
+  allOf: "{column}: alle",
   allZero: "Alle Werte sind 0",
   against: "{x} gegen {y}",
   againstSized: "{x} gegen {y}, Größe nach {size}",

@@ -21,6 +21,8 @@ export const ko: Messages = {
   noRowsMatch: "일치하는 행이 없습니다.",
   showing: "{total}개 중 {shown}개 표시",
   showMore: "더 보기",
+  filterBy: "{column}(으)로 필터",
+  allOf: "{column}: 전체",
   allZero: "모든 값이 0입니다",
   against: "{x} 대 {y}",
   againstSized: "{x} 대 {y}, 크기는 {size}",
