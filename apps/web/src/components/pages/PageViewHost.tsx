@@ -124,9 +124,10 @@ function OpenPage({
   const data = page.data;
   const botId = data?.botId;
   const groupId = data?.groupId;
-  // The page shows its bot's or group's attached files, which the reader's own access loads.
+  // The page shows its group's or bot's attached files, which the reader's own access loads. A
+  // group's page names the bot that made it too, but its files belong to the group's chat.
   const media = useMemo<ArtifactTarget | undefined>(
-    () => (botId ? { botId } : groupId ? { groupId } : undefined),
+    () => (groupId ? { groupId } : botId ? { botId } : undefined),
     [botId, groupId],
   );
   const open = pageId !== null && (data !== undefined || failed || page.isPending);

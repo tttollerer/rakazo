@@ -66,7 +66,8 @@ addEventListener("message", (event) => {
     return;
   }
   // The app's answer to a file request: a picture, sound or video no larger than an attachment may
-  // be, handed over without a copy; anything else tells the page it has no file to show.
+  // be, handed over without a copy; anything else tells the page it has no file to show. Page
+  // media stop at 10 MiB (ATTACHMENT_MAX_BYTES), even where a deployment allows larger uploads.
   const answer = event.data;
   if (answer && answer.type === "rakazo-page:media-data" && typeof answer.id === "string" && typeof answer.ref === "string") {
     const media = typeof answer.mime === "string" && /^(image|video|audio)\/[a-z0-9.+-]+$/i.test(answer.mime) &&

@@ -102,7 +102,8 @@ export function Image({
   const words = useWords();
   const source = imageSource(src);
   const shown = useAttachment(source, "image");
-  const [zoomed, setZoomed] = useState(false);
+  // The address enlarged: a new file, or none, closes the enlarged view.
+  const [zoomed, setZoomed] = useState<string | undefined>(undefined);
   if (!source) return null;
   const style = boxStyle({ width, height, ratio });
   const name = text(alt);
@@ -114,7 +115,7 @@ export function Image({
           type="button"
           className="rk-zoom"
           aria-label={name ? words.t("enlarge", { name }) : words.t("enlargeImage")}
-          onClick={() => setZoomed(true)}
+          onClick={() => setZoomed(shown.src)}
         >
           <Picture src={shown.src} alt={name} fit={fit} style={box} />
         </button>
@@ -122,8 +123,8 @@ export function Image({
         <MediaPlaceholder alt={name || words.t("image")} waiting={shown.waiting} style={box} />
       )}
       <Caption>{text(caption)}</Caption>
-      {zoomed && shown.src ? (
-        <Lightbox src={shown.src} alt={name} onClose={() => setZoomed(false)} />
+      {shown.src && zoomed === shown.src ? (
+        <Lightbox src={shown.src} alt={name} onClose={() => setZoomed(undefined)} />
       ) : null}
     </figure>
   );
@@ -201,7 +202,8 @@ export function Video({
   const source = mediaSource(src, "video");
   const still = imageSource(poster);
   const shown = useAttachment(source, "video");
-  const cover = useAttachment(still, "image").src;
+  const stillFile = useAttachment(still, "image");
+  const cover = stillFile.src;
   const [failed, setFailed] = useState<string | undefined>(undefined);
   if (!source && !still) return null;
   const style = boxStyle({ width, height, ratio: ratio ?? (height ? undefined : 16 / 9) });
@@ -230,10 +232,10 @@ export function Video({
             onError={() => setFailed(shown.src)}
           />
         </div>
-      ) : !cover && attachmentRef(source) ? (
+      ) : !cover && (attachmentRef(source) || attachmentRef(still)) ? (
         <MediaPlaceholder
           alt={text(alt)}
-          waiting={shown.waiting}
+          waiting={shown.waiting || stillFile.waiting}
           style={{ height: style.height, aspectRatio: style.aspectRatio }}
         />
       ) : (

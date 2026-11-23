@@ -132,7 +132,10 @@ export function pageMediaRequest(data: unknown): { id: string; artifactId: strin
   return /^[A-Za-z0-9_-]{1,64}$/.test(ref) ? { id, artifactId: ref } : null;
 }
 
-/** Whether a file may go into a page as its picture, sound or video. */
+/**
+ * Whether a file may go into a page as its picture, sound or video. Page media stop at
+ * ATTACHMENT_MAX_BYTES (10 MiB) even where a deployment's maxUploadSizeBytes allows more.
+ */
 export function pageMediaAllowed(file: { mimeType: string; size: number }): boolean {
   return (
     /^(image|video|audio)\/[a-z0-9.+-]+$/i.test(file.mimeType) && file.size <= ATTACHMENT_MAX_BYTES

@@ -165,9 +165,9 @@ it("acts for a page only in an interactive frame, right after the person used th
 
 it("sends a page the attached files its reader may open, without a click, and nothing else", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  const files: Record<string, { mimeType: string; contentBase64: string }> = {
-    photo: { mimeType: "image/jpeg", contentBase64: btoa("jpeg") },
-    page: { mimeType: "text/html", contentBase64: btoa("<p>x</p>") },
+  const files: Record<string, { mimeType: string; size: number; contentBase64: string }> = {
+    photo: { mimeType: "image/jpeg", size: 4, contentBase64: btoa("jpeg") },
+    page: { mimeType: "text/html", size: 8, contentBase64: btoa("<p>x</p>") },
   };
   artifacts.get.mockImplementation(async ({ artifactId }: { artifactId: string }) => {
     const file = files[artifactId];

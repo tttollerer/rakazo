@@ -36,6 +36,8 @@ type Held = {
   done: boolean;
   redraws: Set<() => void>;
   stop: () => void;
+  /** The freeing of a file let go, held back a tick in case it is shown again at once. */
+  freeing?: ReturnType<typeof setTimeout>;
 };
 
 /** One request and one blob address per file, shared by every component showing it. */
@@ -45,22 +47,20 @@ let requests = 0;
 function hold(ref: string): Held {
   const known = held.get(ref);
   if (known) {
+    clearTimeout(known.freeing);
+    known.freeing = undefined;
     known.users += 1;
     return known;
   }
   requests += 1;
   const id = `media-${requests}`;
   const entry: Held = { users: 1, done: false, redraws: new Set(), stop: () => {} };
-  function finish(result?: { mime: string; buffer: ArrayBuffer }) {
-    entry.stop();
-    entry.done = true;
-    if (result) {
-      entry.mime = result.mime;
-      entry.url = URL.createObjectURL(new Blob([result.buffer], { type: result.mime }));
-    }
-    for (const redraw of entry.redraws) redraw();
-  }
+  const redraw = () => {
+    for (const each of entry.redraws) each();
+  };
   function answer(event: MessageEvent) {
+    // Only the app answers; the page itself or a frame inside it cannot hand it a file.
+    if (event.source !== window.parent) return;
     const data = event.data as {
       type?: unknown;
       id?: unknown;
@@ -69,14 +69,23 @@ function hold(ref: string): Held {
       buffer?: unknown;
     } | null;
     if (data?.type !== MEDIA_DATA_MESSAGE || data.id !== id || data.ref !== ref) return;
+    entry.stop();
+    entry.done = true;
     // The buffer comes from the app's realm, where this page's ArrayBuffer is not its class.
-    const ok =
+    if (
       typeof data.mime === "string" &&
-      Object.prototype.toString.call(data.buffer) === "[object ArrayBuffer]";
-    finish(ok ? { mime: data.mime as string, buffer: data.buffer as ArrayBuffer } : undefined);
+      Object.prototype.toString.call(data.buffer) === "[object ArrayBuffer]"
+    ) {
+      entry.mime = data.mime;
+      entry.url = URL.createObjectURL(new Blob([data.buffer as ArrayBuffer], { type: data.mime }));
+    }
+    redraw();
   }
-  // A host that cannot show attachments never answers.
-  const timer = setTimeout(() => finish(), MEDIA_TIMEOUT_MS);
+  // A host that cannot show attachments never answers; a slow one may still answer later.
+  const timer = setTimeout(() => {
+    entry.done = true;
+    redraw();
+  }, MEDIA_TIMEOUT_MS);
   entry.stop = () => {
     clearTimeout(timer);
     window.removeEventListener("message", answer);
@@ -90,9 +99,12 @@ function hold(ref: string): Held {
 function release(ref: string, entry: Held) {
   entry.users -= 1;
   if (entry.users > 0) return;
-  entry.stop();
-  held.delete(ref);
-  if (entry.url) URL.revokeObjectURL(entry.url);
+  entry.freeing = setTimeout(() => {
+    if (entry.users > 0) return;
+    entry.stop();
+    held.delete(ref);
+    if (entry.url) URL.revokeObjectURL(entry.url);
+  }, 0);
 }
 
 /**
@@ -148,5 +160,8 @@ export function MediaPlaceholder({
 }
 
 export const ATTACHMENT_CSS = `
-.rk-media-missing{display:flex;align-items:center;justify-content:center;min-height:96px;padding:12px;color:var(--rk-secondary);text-align:center;overflow-wrap:anywhere}
+.rk-media-missing{display:flex;align-items:center;justify-content:center;padding:12px;color:var(--rk-secondary);text-align:center;overflow-wrap:anywhere}
+.rk-media-missing:not([style*="height"]):not([style*="aspect-ratio"]){min-height:96px}
+.rk-product-thumb .rk-media-missing{padding:0}
+.rk-product-thumb .rk-media-missing span{display:none}
 `;

@@ -2,6 +2,7 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { ATTACHMENT_MAX_BYTES } from "@rakazo/contracts";
 import { HTML_VIEWER_PATH } from "@rakazo/contracts/content-security-policy";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -242,6 +243,11 @@ it("passes file requests up and only pictures, sound or video of attachment size
     refused,
   ]);
   expect(preview.srcdoc).toBe("");
+});
+
+it("caps a page's files in the shell at the size an attachment may have", () => {
+  // Page media stop at 10 MiB even where a deployment allows larger uploads.
+  expect(shell).toContain(`answer.buffer.byteLength <= ${ATTACHMENT_MAX_BYTES}`);
 });
 
 it("lets the shell load the nested srcdoc preview and rejects http(s) navigations", () => {

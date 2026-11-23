@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactElement } from "react";
 import { act } from "react";
+import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CALENDAR_CSS, DayView, MonthView, parseDay, WeekView } from "./calendar.js";
@@ -21,6 +22,7 @@ import {
   Video,
   WatchCard,
 } from "./media.js";
+import { ATTACHMENT_CSS } from "./media-source.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -30,7 +32,9 @@ const WAV = "data:audio/wav;base64,UklGRg==";
 
 let host: HTMLDivElement;
 let posted: unknown[];
+let roots: Root[];
 beforeEach(() => {
+  roots = [];
   host = document.body.appendChild(document.createElement("div"));
   posted = [];
   vi.spyOn(window, "postMessage").mockImplementation((message: unknown) => {
@@ -40,6 +44,10 @@ beforeEach(() => {
   Element.prototype.scrollTo ??= () => {};
 });
 afterEach(() => {
+  for (const root of roots) act(() => root.unmount());
+  // A file let go is freed on the next tick; let that run before the clock is real again.
+  if (vi.isFakeTimers()) act(() => vi.runOnlyPendingTimers());
+  vi.useRealTimers();
   host.remove();
   document.documentElement.removeAttribute("data-reply");
   vi.restoreAllMocks();
@@ -47,7 +55,9 @@ afterEach(() => {
 
 function render(element: ReactElement) {
   const root = createRoot(host.appendChild(document.createElement("div")));
+  roots.push(root);
   act(() => root.render(element));
+  return root;
 }
 const q = <T extends Element>(selector: string) => host.querySelector<T>(selector);
 const all = (selector: string) => [...host.querySelectorAll<HTMLElement>(selector)];
@@ -241,31 +251,34 @@ describe("attachments", () => {
   beforeEach(() => {
     made = [];
     revoked = [];
-    URL.createObjectURL = vi.fn((blob: Blob) => {
-      made.push(blob);
+    vi.useFakeTimers();
+    // jsdom has no blob addresses; the spies stand in for the browser's.
+    for (const name of ["createObjectURL", "revokeObjectURL"] as const) {
+      if (!(name in URL)) Object.defineProperty(URL, name, { value: () => "", configurable: true });
+    }
+    vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      made.push(blob as Blob);
       return `blob:null/${made.length}`;
     });
-    URL.revokeObjectURL = vi.fn((url: string) => {
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation((url) => {
       revoked.push(url);
     });
   });
   const requests = () => posted as { type: string; id: string; ref: string }[];
-  const answer = (data: object) =>
+  const answer = (data: object, source: Window | null = window.parent) =>
     act(() => {
-      window.dispatchEvent(new MessageEvent("message", { data }));
+      window.dispatchEvent(new MessageEvent("message", { data, source }));
     });
   const bytes = (request: { id: string; ref: string }, mime: string) =>
     answer({ ...request, type: "rakazo-page:media-data", mime, buffer: new ArrayBuffer(4) });
+  const tick = () => act(() => vi.advanceTimersByTime(0));
 
   it("asks the app once for an attached picture and shows it as a blob once it arrives", () => {
-    const root = createRoot(host.appendChild(document.createElement("div")));
-    act(() =>
-      root.render(
-        <>
-          <Image src="attachment:cm1photo" alt="Harbour" />
-          <Gallery photos={[{ src: "attachment:cm1photo", alt: "Harbour" }]} />
-        </>,
-      ),
+    const root = render(
+      <>
+        <Image src="attachment:cm1photo" alt="Harbour" />
+        <Gallery photos={[{ src: "attachment:cm1photo", alt: "Harbour" }]} />
+      </>,
     );
     expect(requests()).toEqual([
       { type: "rakazo-page:media", id: expect.any(String), ref: "cm1photo" },
@@ -275,13 +288,7 @@ describe("attachments", () => {
     expect(all('[role="img"][aria-busy]')).toHaveLength(2);
     expect(q(".rk-media-missing")!.textContent).toBe("Harbour");
     // An answer for another file or request is not this one.
-    answer({
-      ...requests()[0],
-      type: "rakazo-page:media-data",
-      ref: "other",
-      mime: "image/png",
-      buffer: new ArrayBuffer(1),
-    });
+    answer({ ...requests()[0], type: "rakazo-page:media-data", ref: "other", mime: "image/png" });
     expect(made).toHaveLength(0);
     bytes(requests()[0]!, "image/jpeg");
     expect(made.map((blob) => blob.type)).toEqual(["image/jpeg"]);
@@ -290,11 +297,23 @@ describe("attachments", () => {
       "blob:null/1",
     ]);
     act(() => root.unmount());
+    tick();
     expect(revoked).toEqual(["blob:null/1"]);
   });
 
-  it("keeps the placeholder where the app refuses, sends no picture, or never answers", () => {
-    vi.useFakeTimers();
+  it("takes a file only from the app the page sits in", () => {
+    render(<Image src="attachment:elsewhere" alt="Elsewhere" />);
+    const [request] = requests();
+    // The page itself, or a frame it made, posting the answer is not the app.
+    answer(
+      { ...request, type: "rakazo-page:media-data", mime: "image/png", buffer: new ArrayBuffer(1) },
+      null,
+    );
+    expect(made).toHaveLength(0);
+    expect(q("[aria-busy]")).not.toBeNull();
+  });
+
+  it("keeps the placeholder where the app refuses, sends no picture, or has not answered", () => {
     render(
       <>
         <Image src="attachment:refused" alt="Refused" />
@@ -315,7 +334,51 @@ describe("attachments", () => {
       "Silent",
     ]);
     expect(q("[aria-busy]")).toBeNull();
-    vi.useRealTimers();
+  });
+
+  it("still shows a file that arrives after the placeholder gave up waiting", () => {
+    render(<Image src="attachment:late" alt="Late" />);
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(q("[aria-busy]")).toBeNull();
+    bytes(requests()[0]!, "image/png");
+    expect(q("img")!.getAttribute("src")).toBe("blob:null/1");
+  });
+
+  it("keeps a file that is shown again right away, as when its component is remounted", () => {
+    const root = render(<Image key="a" src="attachment:same" alt="Same" />);
+    bytes(requests()[0]!, "image/png");
+    act(() => root.render(<Image key="b" src="attachment:same" alt="Same" />));
+    tick();
+    expect(requests()).toHaveLength(1);
+    expect(revoked).toEqual([]);
+    expect(q("img")!.getAttribute("src")).toBe("blob:null/1");
+  });
+
+  it("closes the enlarged picture when its file goes away", () => {
+    const root = render(<Image src="attachment:zoom1" alt="Zoom" />);
+    bytes(requests()[0]!, "image/png");
+    click(q("button.rk-zoom"));
+    expect(q('[role="dialog"]')).not.toBeNull();
+    act(() => root.render(<Image src="attachment:zoom2" alt="Zoom" />));
+    expect(q('[role="dialog"]')).toBeNull();
+    bytes(requests()[1]!, "image/png");
+    expect(q('[role="dialog"]')).toBeNull();
+  });
+
+  it("holds a video's place by name while its only attachment, the poster, is on its way", () => {
+    render(<Video poster="attachment:still" alt="Clip" />);
+    expect(q(".rk-media-missing[aria-busy]")!.textContent).toBe("Clip");
+    bytes(requests()[0]!, "image/png");
+    expect(q(".rk-media-missing")).toBeNull();
+    expect(q('[role="img"] img')!.getAttribute("src")).toBe("blob:null/1");
+  });
+
+  it("gives the placeholder a height only where its box has none, and no text in a thumbnail", () => {
+    expect(ATTACHMENT_CSS).toContain(
+      '.rk-media-missing:not([style*="height"]):not([style*="aspect-ratio"]){min-height:96px}',
+    );
+    expect(ATTACHMENT_CSS).toContain(".rk-product-thumb .rk-media-missing{padding:0}");
+    expect(ATTACHMENT_CSS).toContain(".rk-product-thumb .rk-media-missing span{display:none}");
   });
 
   it("plays attached sound and video from the bytes the app sends", () => {

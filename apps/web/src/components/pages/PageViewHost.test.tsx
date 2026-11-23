@@ -11,6 +11,11 @@ import { createPageSession, PagesProvider } from "../../lib/pages/pages";
 import { PageNotice } from "./PageNotice";
 import { PageViewHost } from "./PageViewHost";
 
+const shown = vi.hoisted(() => ({
+  page: {} as { botId?: string | null; groupId?: string | null },
+  media: [] as unknown[],
+}));
+
 vi.mock("@lingui/react/macro", () => ({
   useLingui: () => ({ i18n: { locale: "en" }, t: String.raw }),
   Trans: ({ children }: { children: ReactNode }) => children,
@@ -33,6 +38,7 @@ vi.mock("../../lib/query/query", () => ({
             owner: { name: "" },
             visibility: "link",
             shareUrl: input.link === true ? "https://rakazo.example/p/1" : null,
+            ...shown.page,
           }),
         }),
       },
@@ -40,12 +46,23 @@ vi.mock("../../lib/query/query", () => ({
   }),
 }));
 vi.mock("./PageView", () => ({
-  PageView: ({ composer, share }: { composer: ReactNode; share: ReactNode }) => (
-    <div>
-      {share}
-      {composer}
-    </div>
-  ),
+  PageView: ({
+    composer,
+    share,
+    media,
+  }: {
+    composer: ReactNode;
+    share: ReactNode;
+    media?: unknown;
+  }) => {
+    shown.media.push(media);
+    return (
+      <div>
+        {share}
+        {composer}
+      </div>
+    );
+  },
 }));
 
 afterEach(() => {
@@ -126,5 +143,33 @@ it("announces why a page is not showing", async () => {
   expect(document.querySelector('[role="alert"]')?.textContent).toContain(
     "This page couldn't load",
   );
+  root.unmount();
+});
+
+it("shows a group's page with the group's attached files, not those of the bot that made it", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal("fetch", async () => new Response(""));
+  shown.page = { botId: "bot-1", groupId: "group-1" };
+  shown.media = [];
+  const root = createRoot(document.body.appendChild(document.createElement("div")));
+  await act(async () =>
+    root.render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={["/app/group-1?page=p1"]}>
+          <PagesProvider value={{ open: () => {}, session: createPageSession() }}>
+            <PageViewHost />
+          </PagesProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    ),
+  );
+  await act(flush);
+  expect(shown.media.at(-1)).toEqual({ groupId: "group-1" });
+  shown.page = {};
   root.unmount();
 });

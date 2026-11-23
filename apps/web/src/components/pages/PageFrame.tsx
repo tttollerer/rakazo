@@ -12,7 +12,7 @@ import { useCallback, useRef, useState } from "react";
 import { writeClipboard } from "../../lib/copy-text";
 import type { ArtifactTarget } from "../../lib/pages/artifact-open";
 import { pageFrameHeight } from "../../lib/pages/page-cards";
-import { pageMediaAnswer } from "../../lib/pages/page-media";
+import { pageMediaLoader } from "../../lib/pages/page-media";
 import { SandboxedHtmlViewer } from "../messages/SandboxedHtmlViewer";
 
 /**
@@ -48,6 +48,12 @@ export function PageFrame({
   const box = useRef<HTMLDivElement>(null);
   const [drawnAt, setDrawnAt] = useState<CSSProperties | undefined>(undefined);
   const usedGesture = useRef<string | null>(null);
+  // Files load once per document shown; a new document or target starts afresh.
+  const loader = useRef<{
+    document: string;
+    media?: ArtifactTarget;
+    load: ReturnType<typeof pageMediaLoader>;
+  } | null>(null);
   const receive = useCallback(
     (
       data: unknown,
@@ -75,9 +81,10 @@ export function PageFrame({
       // Showing a file needs no click, unlike the actions below.
       const file = pageMediaRequest(data);
       if (file) {
-        void pageMediaAnswer(media, file).then(({ message, transfer }) =>
-          answer(message, transfer),
-        );
+        if (loader.current?.document !== document || loader.current.media !== media) {
+          loader.current = { document, media, load: pageMediaLoader(media) };
+        }
+        void loader.current.load(file).then(({ message, transfer }) => answer(message, transfer));
         return;
       }
       const sections = onSections && pageReviewSections(data);
@@ -94,7 +101,7 @@ export function PageFrame({
       else if (url) open(url);
       else if (reply) reply(message.text);
     },
-    [interactive, media, onHeight, onReply, onSections, open],
+    [document, interactive, media, onHeight, onReply, onSections, open],
   );
   return (
     <>
