@@ -57,22 +57,76 @@ it("loads at most 32 files for a page, four at a time", async () => {
   const answers = Array.from({ length: 40 }, (_, n) =>
     load({ id: `media-${n}`, artifactId: `file${n}` }),
   );
-  // Thirty-two files four at a time take eight rounds.
+  // Thirty-two files four at a time take eight rounds; each starts once four calls are open.
   for (let round = 0; round < 8; round += 1) {
-    await flush();
-    expect(calls.open).toHaveLength(4);
+    await vi.waitFor(() => expect(calls.open).toHaveLength(4));
     for (const call of calls.open.splice(0)) call.answer(photo);
   }
+  // Settled before awaiting the answers, so a missing limit fails here rather than hanging.
   await flush();
   // The eight files past the limit are refused without a call of their own.
   expect(calls.get).toHaveBeenCalledTimes(32);
-  expect(calls.open).toHaveLength(0);
+  expect(calls.open).toEqual([]);
   expect(calls.most()).toBe(4);
   const sent = await Promise.all(answers);
   const refused = sent.filter(({ message }) => "error" in message);
   expect(refused.map(({ message }) => (message as { ref: string }).ref)).toEqual(
     Array.from({ length: 8 }, (_, n) => `file${32 + n}`),
   );
+});
+
+const MiB = 1024 * 1024;
+/** A file as large as a page may show; the RPC says its size, the bytes stay small. */
+const big = (name: string): File => ({
+  mimeType: "image/jpeg",
+  size: 10 * MiB,
+  contentBase64: btoa(name),
+});
+
+it("keeps at most 64 MiB of a page's files, letting the least recently used go first", async () => {
+  const get = vi.fn(async ({ artifactId }: { artifactId: string }) => big(artifactId));
+  const load = pageMediaLoader({ botId: "bot-1" }, get);
+  for (let n = 0; n < 8; n += 1) await load({ id: `m${n}`, artifactId: `big${n}` });
+  expect(load.heldBytes()).toBeLessThanOrEqual(64 * MiB);
+  expect(load.heldBytes()).toBe(60 * MiB);
+  // The newest is still there; the oldest went and loads again when asked for.
+  await load({ id: "newest", artifactId: "big7" });
+  expect(get).toHaveBeenCalledTimes(8);
+  const again = await load({ id: "oldest", artifactId: "big0" });
+  expect(get).toHaveBeenCalledTimes(9);
+  expect(again.message).toMatchObject({ id: "oldest", ref: "big0", mime: "image/jpeg" });
+  expect(new TextDecoder().decode(again.transfer?.[0] as ArrayBuffer)).toBe("big0");
+});
+
+it("stops loading for a page after 64 calls, however its files push each other out", async () => {
+  const get = vi.fn(async ({ artifactId }: { artifactId: string }) => big(artifactId));
+  const load = pageMediaLoader({ botId: "bot-1" }, get);
+  // Seven files of 10 MiB never fit together, so going round them misses every time.
+  const sent = [];
+  for (let n = 0; n < 100; n += 1) {
+    sent.push(await load({ id: `m${n}`, artifactId: `big${n % 7}` }));
+  }
+  expect(get).toHaveBeenCalledTimes(64);
+  expect(sent.slice(0, 64).every(({ message }) => "mime" in message)).toBe(true);
+  // Past that, files it still keeps answer and one it let go is refused without a call.
+  const letGo = sent.slice(64).filter(({ message }) => "error" in message);
+  expect(letGo.length).toBeGreaterThan(0);
+  expect(await load({ id: "late", artifactId: "big1" })).toMatchObject({
+    message: { error: "unavailable" },
+  });
+  expect(get).toHaveBeenCalledTimes(64);
+});
+
+it("counts a file the page asked for once toward its 32, even after it was let go", async () => {
+  const get = vi.fn(async ({ artifactId }: { artifactId: string }) => big(artifactId));
+  const load = pageMediaLoader({ botId: "bot-1" }, get);
+  for (let n = 0; n < 32; n += 1) await load({ id: `m${n}`, artifactId: `big${n}` });
+  // big0 was let go long ago but still counts; a 33rd file is refused, big0 loads again.
+  const refused = await load({ id: "new", artifactId: "big32" });
+  expect(refused.message).toMatchObject({ error: "unavailable" });
+  const again = await load({ id: "old", artifactId: "big0" });
+  expect(again.message).toMatchObject({ mime: "image/jpeg" });
+  expect(get).toHaveBeenCalledTimes(33);
 });
 
 it("refuses a file that is too large or no picture, sound or video before decoding it", async () => {
