@@ -63,9 +63,12 @@ it("loads at most 32 files for a page, four at a time", async () => {
     expect(calls.open).toHaveLength(4);
     for (const call of calls.open.splice(0)) call.answer(photo);
   }
-  const sent = await Promise.all(answers);
+  await flush();
+  // The eight files past the limit are refused without a call of their own.
   expect(calls.get).toHaveBeenCalledTimes(32);
+  expect(calls.open).toHaveLength(0);
   expect(calls.most()).toBe(4);
+  const sent = await Promise.all(answers);
   const refused = sent.filter(({ message }) => "error" in message);
   expect(refused.map(({ message }) => (message as { ref: string }).ref)).toEqual(
     Array.from({ length: 8 }, (_, n) => `file${32 + n}`),
