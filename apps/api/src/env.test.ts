@@ -569,6 +569,16 @@ describe("web origin", () => {
   });
 });
 
+describe("plugin source token", () => {
+  it("is unset without a value and kept trimmed with one", () => {
+    expect(loadEnv(base).pluginSourceToken).toBeUndefined();
+    expect(loadEnv({ ...base, PLUGIN_SOURCE_TOKEN: " " }).pluginSourceToken).toBeUndefined();
+    expect(
+      loadEnv({ ...base, PLUGIN_SOURCE_TOKEN: " test-token-not-real " }).pluginSourceToken,
+    ).toBe("test-token-not-real");
+  });
+});
+
 describe("directory provisioning environment", () => {
   it("stays off without a token and keeps a long one", () => {
     expect(loadEnv(base).scimBearerToken).toBeUndefined();

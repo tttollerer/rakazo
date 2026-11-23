@@ -21,6 +21,7 @@ import {
   referencedSkillResources,
   skillFolder,
 } from "./plugin-skill-resources.js";
+import { unreadableWhenMissing } from "./plugin-source-errors.js";
 
 export type PluginSourceRef = { gitUrl: string; ref?: string; subdir?: string };
 export type PluginRepoFile = { path: string; content: string };
@@ -222,7 +223,7 @@ export async function fetchGitHubRepo(
 ): ReturnType<PluginRepoFetcher> {
   const url = new URL(ref.gitUrl);
   if (url.hostname !== "github.com")
-    throw new Error("Only public github.com plugin sources are supported right now");
+    throw new Error("Only github.com plugin sources are supported right now");
   const repo = url.pathname;
   const deadline = deadlineSignal(30_000, signal);
   const commit = JSON.parse(
@@ -230,7 +231,7 @@ export async function fetchGitHubRepo(
       `https://api.github.com/repos${repo}/commits/${encodeURIComponent(ref.ref ?? "HEAD")}`,
       512_000,
       deadline,
-    ),
+    ).catch(unreadableWhenMissing),
   ) as { sha?: string; commit?: { tree?: { sha?: string } } };
   const sha = commit.sha;
   if (!sha || !FULL_SHA.test(sha)) throw new Error("Could not resolve plugin commit SHA");

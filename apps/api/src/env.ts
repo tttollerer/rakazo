@@ -62,6 +62,11 @@ export interface AppEnv extends MessagingEnvironmentValues {
   social?: SocialAuthConfig;
   /** Bearer token the identity provider presents to provision accounts over SCIM. */
   scimBearerToken?: string;
+  /**
+   * Read-only token plugin and skill installs from github.com read private repositories with.
+   * Server-side only: it never reaches a browser, an answer, a log or a stored source.
+   */
+  pluginSourceToken?: string;
   nodeEnv: string;
   desktopStackToken?: string;
   databaseUrl: string;
@@ -279,6 +284,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     oidc,
     social,
     scimBearerToken,
+    pluginSourceToken: optional(source.PLUGIN_SOURCE_TOKEN),
     nodeEnv: source.NODE_ENV ?? "",
     databaseUrl: required(source, "DATABASE_URL"),
     realtimeDatabaseUrl: source.REALTIME_DATABASE_URL ?? required(source, "DATABASE_URL"),

@@ -5,6 +5,7 @@ import type { PluginMcpServerEntry, PluginRepoFetcher } from "@rakazo/adapters";
 import {
   buildMcpCredentialBlob,
   isPluginLoadFault,
+  PluginSourceUnreadableError,
   persistPreparedSecret,
   pluginPreviewDto,
   previewPluginInstall,
@@ -61,6 +62,8 @@ async function loadPlugin(
     plugin = await previewPluginInstall({ source, fetcher: deps.fetcher, signal });
   } catch (error) {
     rethrowUnlessPluginSourceFailed(error, signal);
+    // Missing or private says what to change, unlike the general refusal.
+    if (error instanceof PluginSourceUnreadableError) throw error;
     throw new ClientError("BAD_REQUEST", "Could not load a supported plugin from this repository");
   }
   if (plugin.digest !== digest) {

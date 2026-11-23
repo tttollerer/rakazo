@@ -55,6 +55,7 @@ import {
   PiOAuthLogins,
   PostgresRealtimeFanout,
   piSessionsRoot,
+  pluginRepoFetcherFor,
   RUN_DRAIN_MS,
   RunJobPublisher,
   RunStarter,
@@ -692,7 +693,10 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
             }),
           },
     analytics,
-    pluginRepoFetcher,
+    // Installs read private repositories with the operator's token; submissions to the shared
+    // listing never do, so a private repository cannot be approved into it.
+    pluginRepoFetcher: pluginRepoFetcher ?? pluginRepoFetcherFor(env.pluginSourceToken),
+    pluginSubmissionFetcher: pluginRepoFetcher,
     pluginMarketplaceRead,
     cloudAgent,
     userCloudAgents,

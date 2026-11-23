@@ -129,6 +129,8 @@ export interface RouterDeps {
   connectors: ConnectorRegistry;
   remoteConnectors?: RemoteConnectorDependencies;
   pluginRepoFetcher?: PluginRepoFetcher;
+  /** Checks plugin submissions; always the public reader, never the operator's token. */
+  pluginSubmissionFetcher?: PluginRepoFetcher;
   pluginMarketplaceRead?: PluginTextReader;
   artifacts: ArtifactStore;
   dataDir: string;

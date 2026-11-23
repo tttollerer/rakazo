@@ -171,6 +171,21 @@ before the change must disconnect and reconnect Outlook.
 base URL. Rakazo appends `api/search`. With the setting unset, **Search public MCP directory** can still
 search the public directory on demand. Each service handles its own authorization.
 
+## Plugins from private repositories
+
+**From GitHub** installs plugins and skills from public repositories. To also install from private
+ones, set `PLUGIN_SOURCE_TOKEN` on the API to a fine-grained GitHub token with read-only
+**Contents** access to just the repositories you want to offer, and recreate the API service.
+
+The token stays on the server. It is sent only over HTTPS to `api.github.com` and
+`raw.githubusercontent.com`, never after a redirect to another host, and it does not appear in
+logs, errors, previews or stored sources. A repository the server cannot read is reported as
+missing or private.
+
+Every signed-in person on the server can install from any repository the token can read, so
+scope it to repositories everyone may use. Plugin submissions to the shared listing are always
+checked without the token, so a private repository is never approved into it.
+
 ## Messaging apps
 
 Messaging adapters are optional. Configure credentials for the platforms you need; users link

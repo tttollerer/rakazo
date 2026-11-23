@@ -318,6 +318,28 @@ describe("reviewing submissions", () => {
     expect(rows[0]!.status).toBe("approved");
   });
 
+  it("checks a submission only with the public reader, never the operator's token", async () => {
+    const { deps } = await submitted();
+    const withToken = vi.fn();
+    const publicOnly = vi.fn();
+    preview.mockResolvedValue({
+      source: { gitUrl: "https://github.com/acme/plugins", subdir: "tickets" },
+      resolvedSha: SHA,
+      mcpServers: [],
+      skills: [{ name: "a" }],
+      skipped: [],
+    });
+    // Deps as the router has them: the install fetcher with the token sits beside it.
+    const routerDeps = {
+      ...deps,
+      pluginRepoFetcher: withToken,
+      pluginSubmissionFetcher: publicOnly,
+    };
+    await reviewPluginSubmission(routerDeps, { id: "sub-1", decision: "approve" });
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ fetcher: publicOnly }));
+    expect(preview).not.toHaveBeenCalledWith(expect.objectContaining({ fetcher: withToken }));
+  });
+
   it("tells the admin when the repository holds no plugin it can preview", async () => {
     const { deps, rows } = await submitted();
     preview.mockRejectedValue(new Error("No plugin manifest found"));

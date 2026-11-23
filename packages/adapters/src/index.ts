@@ -86,6 +86,7 @@ export * from "./integrations/installed-connectors.js";
 export * from "./integrations/integration-provider-settings.js";
 export * from "./integrations/plugin-connectors.js";
 export * from "./integrations/plugin-marketplace.js";
+export * from "./integrations/plugin-source-reader.js";
 export * from "./integrations/third-party-connector-emulator.js";
 export * from "./locks/advisory-lock.js";
 export * from "./mcp/mcp-connector.js";

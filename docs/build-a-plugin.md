@@ -96,8 +96,10 @@ each other and from Rakazo's built-in skills.
 
 ### 4. Test in Rakazo
 
-1. Publish your plugin files in a public GitHub repository. Private repositories and local
-   folders are not supported sources.
+1. Publish your plugin files in a GitHub repository. A private repository works on a server
+   whose operator set a token that can read it (see
+   [Plugins from private repositories](self-host-integrations.md#plugins-from-private-repositories)).
+   Local folders are not supported sources.
 2. Open **Integrations**, choose **+** → **From GitHub**, paste the repository URL, and choose
    **Preview**. For a folder, use `https://github.com/example/plugins/tree/main/mcp-server`.
 3. Check the preview's servers, skills, and skipped parts. Choose **Connect** to install the

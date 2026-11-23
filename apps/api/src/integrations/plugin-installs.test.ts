@@ -1,6 +1,10 @@
 import { createRouterClient } from "@orpc/server";
 import type { SecretStore } from "@rakazo/adapter-kit";
-import { BUILTIN_AGENT_SKILLS, previewPluginInstall } from "@rakazo/adapters";
+import {
+  BUILTIN_AGENT_SKILLS,
+  PluginSourceUnreadableError,
+  previewPluginInstall,
+} from "@rakazo/adapters";
 import type { Actor } from "@rakazo/contracts";
 import { createLogger, createTestSink, installLogger } from "@rakazo/logging";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -371,6 +375,17 @@ describe("plugin RPC boundary", () => {
         message: "Could not preview a supported plugin from this repository",
       });
     }
+  });
+  it("says when the repository is missing or private, for preview and install alike", async () => {
+    const failing = client(actor, failingFetcher(new PluginSourceUnreadableError()));
+    const answer = {
+      code: "PLUGIN_SOURCE_UNREADABLE",
+      message: "This repository was not found. If it is private, the server needs access to it.",
+    };
+    await expect(failing.rpc.capabilities.pluginPreview({ source })).rejects.toMatchObject(answer);
+    await expect(
+      failing.rpc.capabilities.install({ kind: "plugin", ...(await input()) }),
+    ).rejects.toMatchObject(answer);
   });
   it("lets a fault in the loader fail the preview as a server error", async () => {
     const fault = client(actor, failingFetcher(new TypeError("Cannot read properties of null")));

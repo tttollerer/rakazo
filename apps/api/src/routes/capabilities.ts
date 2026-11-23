@@ -4,6 +4,7 @@ import {
   applyMcpSourcePreset,
   createPluginMarketplace,
   isTransientFetchError,
+  PluginSourceUnreadableError,
   pluginPreviewDto,
   prepareApiInstall,
   prepareGraphqlInstall,
@@ -288,6 +289,8 @@ export function capabilitiesRoutes(ctx: RouterContext) {
             rethrowUnlessPluginSourceFailed(error, context.signal);
           // Only content we can't support leaves browse; a slow or failing host is retried.
           if (!isTransientFetchError(error)) pluginMarketplace.markUnreadable(input.source);
+          // Missing or private says what to change, unlike the general refusal.
+          if (error instanceof PluginSourceUnreadableError) throw error;
           throw new ClientError(
             "BAD_REQUEST",
             "Could not preview a supported plugin from this repository",

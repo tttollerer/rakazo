@@ -260,7 +260,8 @@ export async function listPluginSubmissions(
 }
 
 export async function reviewPluginSubmission(
-  deps: EmailDeps & Pick<RouterDeps, "prisma" | "pluginRepoFetcher" | "remoteConnectors" | "env">,
+  deps: EmailDeps &
+    Pick<RouterDeps, "prisma" | "pluginSubmissionFetcher" | "remoteConnectors" | "env">,
   input: PluginSubmissionReview,
   signal?: AbortSignal,
 ): Promise<PluginSubmission> {
@@ -274,7 +275,7 @@ export async function reviewPluginSubmission(
     const preview = await previewPluginInstall({
       source: row.source,
       signal,
-      fetcher: deps.pluginRepoFetcher,
+      fetcher: deps.pluginSubmissionFetcher,
     }).catch((error) => {
       rethrowUnlessPluginSourceFailed(error, signal);
       throw new ClientError(
