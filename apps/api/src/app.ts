@@ -148,7 +148,7 @@ import { mountRpcRoute } from "./http/rpc-route.js";
 import { mountScriptAssets } from "./http/script-assets.js";
 import { SYSTEM_CONTEXT_PATHS } from "./http/system-context-routes.js";
 import { moveMcpArgsIntoSecrets } from "./integrations/mcp-args-migration.js";
-import { pluginFetchers, pluginSourceTokenWarning } from "./integrations/plugin-source-setup.js";
+import { pluginSourceDeps } from "./integrations/plugin-source-setup.js";
 import { pluginSubmissionRoutes } from "./integrations/plugin-submissions.js";
 import { mountMeetingCalendarHttp } from "./meetings/calendar/calendar-routes.js";
 import { createMeetingAnswers } from "./meetings/meeting-answers.js";
@@ -276,9 +276,7 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
   });
   const weakEncryptionKey = encryptionKeyWarning(process.env);
   if (weakEncryptionKey) logger.warn(weakEncryptionKey);
-  const openPluginSources = pluginSourceTokenWarning(env);
-  if (openPluginSources) logger.warn(openPluginSources);
-  const fetchers = pluginFetchers(pluginRepoFetcher, env.pluginSourceToken);
+  const pluginSources = pluginSourceDeps(pluginRepoFetcher, env, (warning) => logger.warn(warning));
   const foundation = await startServerFoundation({
     prisma: created.prisma,
     realtime:
@@ -696,8 +694,7 @@ async function buildApp(overrides: CreateAppOverrides): Promise<AppHandles> {
             }),
           },
     analytics,
-    pluginRepoFetcher: fetchers.install,
-    pluginSubmissionFetcher: fetchers.submission,
+    ...pluginSources,
     pluginMarketplaceRead,
     cloudAgent,
     userCloudAgents,

@@ -345,12 +345,14 @@ describe("plugin RPC boundary", () => {
   function client(
     currentActor: Actor | null = actor,
     pluginRepoFetcher: PluginRepoFetcher = fetcher,
+    privatePluginSources = false,
   ) {
     const { deps, prisma } = setup();
     const router = createRouter({
       prisma: deps.prisma,
       secrets: deps.secrets,
       pluginRepoFetcher,
+      privatePluginSources,
       remoteConnectors: { resolveHostname: async () => [{ address: "203.0.113.10", family: 4 }] },
       env: { webOrigin: "http://localhost:5173", defaultProvider: "fake", defaultModel: "fake" },
       dataDir: "/tmp/plugin-rpc-test",
@@ -429,14 +431,27 @@ describe("plugin RPC boundary", () => {
     expect(sink.events.length).toBeGreaterThan(0);
     expect(JSON.stringify(sink.events)).not.toContain(token);
   });
-  it("limits how many plugins one person previews and installs in a while", async () => {
-    const { rpc } = client();
-    for (let n = 0; n < 30; n += 1) await rpc.capabilities.pluginPreview({ source });
+  it("limits how often one person reads repositories with the operator's token", async () => {
+    const { rpc } = client(actor, fetcher, true);
     const limited = { kind: "TOO_MANY_REQUESTS", code: "PLUGIN_LOADS_LIMITED" };
+    const notLimited = (error: unknown) => expect(error).not.toMatchObject(limited);
+    // Previews, installs and added parts share one count; the 31st of them is refused.
+    for (let n = 0; n < 10; n += 1) await rpc.capabilities.pluginPreview({ source });
+    for (let n = 0; n < 10; n += 1)
+      await rpc.capabilities.install({ kind: "plugin", ...(await input()) }).catch(notLimited);
+    for (let n = 0; n < 10; n += 1)
+      await rpc.capabilities.pluginParts({ id: "inst-1", parts: ["skills"] }).catch(notLimited);
     await expect(rpc.capabilities.pluginPreview({ source })).rejects.toMatchObject(limited);
     await expect(
       rpc.capabilities.install({ kind: "plugin", ...(await input()) }),
     ).rejects.toMatchObject(limited);
+    await expect(
+      rpc.capabilities.pluginParts({ id: "inst-1", parts: ["skills"] }),
+    ).rejects.toMatchObject(limited);
+  });
+  it("does not limit previews on a server without the token, as before", async () => {
+    const { rpc } = client();
+    for (let n = 0; n < 40; n += 1) await rpc.capabilities.pluginPreview({ source });
   });
   it("lets a fault in the loader fail the preview as a server error", async () => {
     const fault = client(actor, failingFetcher(new TypeError("Cannot read properties of null")));

@@ -129,9 +129,9 @@ describe("plugin sources read with the operator's token", () => {
       code: "PLUGIN_SOURCE_UNREADABLE",
       message: "This repository was not found. If it is private, the server needs access to it.",
     };
-    // GitHub answers 404 for a missing or hidden repository and 422 for a ref it cannot find;
-    // both get one answer, so the token never tells which private repositories exist.
-    for (const status of [404, 422]) {
+    // GitHub answers 404 for a missing or hidden repository, 410 for one gone and 422 for a ref
+    // it cannot find; all get one answer, so the token never tells which private ones exist.
+    for (const status of [404, 410, 422]) {
       const fetcher = tokenFetcher(() => new Response("missing", { status }));
       const error = await fetcher({ gitUrl: "https://github.com/acme/private" }).catch((e) => e);
       expect(error).toBeInstanceOf(PluginSourceUnreadableError);
@@ -139,12 +139,15 @@ describe("plugin sources read with the operator's token", () => {
       expect(error).toMatchObject(answer);
       for (const text of everyRendering(error)) expect(text).not.toContain(TOKEN);
     }
-    // Any other failure keeps its own meaning.
-    await expect(
-      tokenFetcher(() => new Response("broken", { status: 500 }))({
-        gitUrl: "https://github.com/acme/private",
-      }),
-    ).rejects.not.toBeInstanceOf(PluginSourceUnreadableError);
+    // Any other failure keeps its own meaning. A 403 may be GitHub's rate limit, which the
+    // failure does not tell apart, so it stays a passing failure rather than "missing".
+    for (const status of [403, 500]) {
+      await expect(
+        tokenFetcher(() => new Response("refused", { status }))({
+          gitUrl: "https://github.com/acme/private",
+        }),
+      ).rejects.not.toBeInstanceOf(PluginSourceUnreadableError);
+    }
   });
 
   it("answers a missing repository without a token exactly as before", async () => {
@@ -197,6 +200,57 @@ describe("plugin sources read with the operator's token", () => {
       PluginSourceUnreadableError,
     );
     expect(inspect(sink.events, { depth: 10 })).not.toContain(TOKEN);
+  });
+
+  it("after GitHub rejects the token, reads without it for a while and warns once", async () => {
+    const sink = createTestSink();
+    installLogger(createLogger({ service: "rakazo-api", sinks: [sink] }));
+    const sha = "a".repeat(40);
+    const tree = "b".repeat(40);
+    const files: Record<string, string> = {
+      "plugin.json": JSON.stringify({ name: "notes" }),
+      "skills/plan/SKILL.md": "---\nname: plan\ndescription: Plans\n---\n\nPlan it.\n",
+      "skills/write/SKILL.md": "---\nname: write\ndescription: Writes\n---\n\nWrite it.\n",
+    };
+    const seen: (string | null)[] = [];
+    let at = 0;
+    const fetcher = pluginRepoFetcherFor(TOKEN, {
+      now: () => at,
+      fetch: async (input, init) => {
+        const authorization = new Headers(init?.headers).get("authorization");
+        seen.push(authorization);
+        if (authorization) return new Response("Bad credentials", { status: 401 });
+        const url = new URL(String(input));
+        if (url.pathname.includes("/commits/"))
+          return new Response(JSON.stringify({ sha, commit: { tree: { sha: tree } } }));
+        if (url.pathname.includes("/git/trees/"))
+          return new Response(
+            JSON.stringify({
+              truncated: false,
+              tree: Object.keys(files).map((path) => ({ path, type: "blob", mode: "100644" })),
+            }),
+          );
+        const path = url.pathname.split(`/${sha}/`)[1] ?? "";
+        return new Response(files[path] ?? "", { status: files[path] ? 200 : 404 });
+      },
+      resolveHostname: publicResolver,
+    })!;
+    const repo = await fetcher({ gitUrl: "https://github.com/acme/notes" });
+    expect(repo.files.map((file) => file.path).sort()).toEqual(Object.keys(files).sort());
+    // One request with the token, the same again without it, and every later one without.
+    expect(seen[0]).toBe(`Bearer ${TOKEN}`);
+    expect(seen.slice(1)).toEqual(Array(seen.length - 1).fill(null));
+    expect(seen.length).toBe(2 + 1 + Object.keys(files).length);
+    await fetcher({ gitUrl: "https://github.com/acme/notes" });
+    expect(seen.filter(Boolean)).toHaveLength(1);
+    const warnings = () =>
+      sink.events.filter((event) => event.level === "warn").map((event) => event.message);
+    expect(warnings()).toEqual(["PLUGIN_SOURCE_TOKEN rejected by GitHub"]);
+    // Five minutes on, the token is offered again, and a new rejection warns again.
+    at = 5 * 60_000;
+    await fetcher({ gitUrl: "https://github.com/acme/notes" });
+    expect(seen.filter(Boolean)).toHaveLength(2);
+    expect(warnings()).toHaveLength(2);
   });
 
   it("leaves the public reader in place when no token is set", () => {

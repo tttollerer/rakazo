@@ -9,6 +9,12 @@ import {
   withSecurityRequest,
 } from "./security-events.js";
 
+const audited = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("./audit-events.js", async (original) => ({
+  ...(await original<typeof import("./audit-events.js")>()),
+  recordAuditEvent: audited,
+}));
+
 function fakeStore() {
   const rows: Array<Record<string, unknown>> = [];
   return {
@@ -88,6 +94,19 @@ describe("recordSecurityEvent", () => {
     ]) {
       expect(stored).not.toContain(sensitive);
     }
+  });
+
+  it("keeps routine plugin source reads out of the organization audit trail", async () => {
+    audited.mockClear();
+    const read = { userId: "user-3", spaceId: "space-3", metadata: { procedure: "p" } };
+    await recordSecurityEvent({ type: "plugin_source.read", ...read });
+    expect(audited).not.toHaveBeenCalled();
+    expect(store.rows).toHaveLength(1);
+    expect(sink.events.some((event) => event["security.event.type"] === "plugin_source.read")).toBe(
+      true,
+    );
+    await recordSecurityEvent({ type: "credential.created", ...read });
+    expect(audited).toHaveBeenCalledTimes(1);
   });
 
   it("emits one structured log line for the log sink", async () => {

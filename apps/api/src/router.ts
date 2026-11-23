@@ -131,6 +131,8 @@ export interface RouterDeps {
   pluginRepoFetcher?: PluginRepoFetcher;
   /** Checks plugin submissions; always the public reader, never the operator's token. */
   pluginSubmissionFetcher?: PluginRepoFetcher;
+  /** Plugin installs read with the operator's token, so they are limited per person. */
+  privatePluginSources?: boolean;
   pluginMarketplaceRead?: PluginTextReader;
   artifacts: ArtifactStore;
   dataDir: string;

@@ -52,7 +52,8 @@ is deleted, until retention prunes them, and in any SIEM they were forwarded to.
 
 Rows are never updated. Postgres rejects updates, and the only delete is retention pruning.
 Failed sign-ins, rate limits and refused destinations have no organization to belong to; they stay
-in the deployment's [security events](./self-host-observability.md#security-events).
+in the deployment's [security events](./self-host-observability.md#security-events). Plugin
+repository reads (`plugin_source.read`) are frequent and stay there too.
 
 ## Retention
 

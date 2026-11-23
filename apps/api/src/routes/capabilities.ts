@@ -47,9 +47,11 @@ const PLUGIN_LOAD_WINDOW_MS = 10 * 60_000;
 export function capabilitiesRoutes(ctx: RouterContext) {
   const { deps, removeMcpServerInTransaction, authed } = ctx;
   const pluginMarketplace = createPluginMarketplace(deps.pluginMarketplaceRead);
-  // Each preview and install fetches a whole repository, with the operator's token when set.
+  // Each preview, install and added part fetches a whole repository. With the operator's token
+  // that reads through the operator's account, so it is limited per person; without it, as before.
   const pluginLoads = windowCounter(PLUGIN_LOAD_WINDOW_MS);
   const limitPluginLoads = (actor: Actor) => {
+    if (!deps.privatePluginSources) return;
     if (pluginLoads(`user:${actor.userId}`) > PLUGIN_LOADS_PER_WINDOW)
       throw new ClientError(
         "TOO_MANY_REQUESTS",
@@ -320,6 +322,7 @@ export function capabilitiesRoutes(ctx: RouterContext) {
         return { ok: true as const };
       }),
       pluginParts: authed.capabilities.pluginParts.handler(async ({ context, input }) => {
+        limitPluginLoads(context.actor);
         const notify: Array<{ threadId: string; seq: number }> = [];
         const install = await setPluginParts(
           {

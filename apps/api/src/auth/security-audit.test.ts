@@ -112,6 +112,19 @@ describe("procedureSecurityEvent", () => {
         source: "https://github.com/acme/plugins#tickets@main",
       },
     });
+    // Adding parts to an installed plugin reads its repository again.
+    expect(
+      procedureSecurityEvent(
+        ["capabilities", "pluginParts"],
+        { id: "inst-1", parts: ["skills"] },
+        actor,
+      ),
+    ).toEqual({
+      type: "plugin_source.read",
+      userId: "user-1",
+      spaceId: "space-1",
+      metadata: { procedure: "capabilities.pluginParts", id: "inst-1" },
+    });
     // Other kinds name an address that may carry a key, so it stays out.
     const api = procedureSecurityEvent(
       ["capabilities", "install"],

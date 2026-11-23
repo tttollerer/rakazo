@@ -30,6 +30,8 @@ export const AUDITED_PROCEDURES: Record<string, AuditedProcedure> = {
   "capabilities.install": { type: "credential.created", kind: "connector", fields: ["kind"] },
   // A preview reads a repository, with the operator's token when one is set.
   "capabilities.pluginPreview": { type: "plugin_source.read" },
+  // Adding parts to an installed plugin reads its pinned repository again.
+  "capabilities.pluginParts": { type: "plugin_source.read", fields: ["id"] },
   "capabilities.remove": { type: "credential.deleted", kind: "connector", fields: ["id"] },
   "connections.revoke": {
     type: "credential.deleted",

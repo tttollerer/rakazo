@@ -43,6 +43,8 @@ const FAILURE_TYPES = new Set<SecurityEventType>([
 ]);
 /** Deployment-wide signals with no account or organization to attribute them to. */
 const NOT_AUDITED = new Set<SecurityEventType>([...FAILURE_TYPES, "deployment.settings.changed"]);
+/** Routine reads an account makes often: kept here and in the log, not in the organization trail. */
+const ROUTINE_READS = new Set<SecurityEventType>(["plugin_source.read"]);
 /** Done to an account by the directory or the operator (`metadata.by`), not by the account itself. */
 const DONE_TO_ACCOUNT = new Set<SecurityEventType>([
   "auth.account.delete_requested",
@@ -97,7 +99,7 @@ export async function recordSecurityEvent(input: SecurityEventInput): Promise<vo
       getLogger().error("security.event.write_failed", error);
     }
   }
-  if (event.userId && !NOT_AUDITED.has(event.type)) {
+  if (event.userId && !NOT_AUDITED.has(event.type) && !ROUTINE_READS.has(event.type)) {
     const { kind, runId, by } = event.metadata;
     const userId = event.userId;
     await withSecurityRequest(

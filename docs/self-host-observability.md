@@ -162,11 +162,14 @@ The API and worker append a row to `security_events` and write a `security.event
 - model, MCP, connector, voice, memory, and secret credentials created, changed, or removed
 - deployment settings changes, approval decisions, and approval policy changes
 - refused private or internal destinations (`egress.refused`) and auth rate-limit hits
+- plugin repositories read for a preview or for adding parts (`plugin_source.read`, with the
+  repository in `metadata.source`; see [plugins from private repositories](./self-host-integrations.md#plugins-from-private-repositories))
 
 Each event has the user, space, client address, user agent, time, and a few identifiers. Events
 never include message content, secrets, or tokens. Rows older than `SECURITY_EVENT_RETENTION_DAYS`
 (default 90) are deleted, and Postgres rejects updates to the rows that remain.
-An account's own events are also written to its organization's [audit log](./self-host-audit-log.md).
+An account's own events are also written to its organization's [audit log](./self-host-audit-log.md),
+except `plugin_source.read`, which is frequent and stays here and in the log.
 
 Operators read recent events through server-side database/log tooling. For example, query Postgres:
 
